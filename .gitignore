@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# DB
+*.sqlite
+*.sqlite3
+
+# Local files/folders
+*_local_
+chroma_db
+
+# сасhes
+.mypy_cache
+
+# VSCode
+.DS_Store
