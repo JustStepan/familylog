@@ -1,4 +1,3 @@
-import asyncio
 import subprocess
 from pathlib import Path
 
@@ -7,6 +6,7 @@ import onnx_asr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..storage.telegram_files import download_file
 from src.config import settings
 from ..storage.models import Message
 
@@ -28,31 +28,6 @@ def get_model():
             quantization="int8"
         )
     return _model
-
-
-async def download_voice(file_id: str) -> Path:
-    """Скачивает голосовой файл с Telegram по file_id.
-    Возвращает путь к сохранённому .ogg файлу."""
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        # Шаг 1: получаем путь к файлу на серверах Telegram
-        r = await client.get(
-            f"https://api.telegram.org/bot{settings.BOT_TOKEN}/getFile",
-            params={"file_id": file_id}
-        )
-        r.raise_for_status()
-        file_path = r.json()["result"]["file_path"]
-
-        # Шаг 2: скачиваем сам файл
-        r = await client.get(
-            f"https://api.telegram.org/file/bot{settings.BOT_TOKEN}/{file_path}"
-        )
-        r.raise_for_status()
-
-    ogg_path = MEDIA_DIR / f"{file_id}.ogg"
-    ogg_path.write_bytes(r.content)
-    return ogg_path
 
 
 def convert_to_wav(ogg_path: Path) -> Path:
@@ -116,7 +91,7 @@ async def process_voice_messages(session: AsyncSession) -> int:
             print(f"Обрабатываем сообщение {msg.id}...")
 
             # Скачиваем файл
-            ogg_path = await download_voice(msg.raw_content)
+            ogg_path = await download_file(msg.raw_content, MEDIA_DIR, "ogg")
 
             # Конвертируем
             wav_path = convert_to_wav(ogg_path)
