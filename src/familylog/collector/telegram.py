@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from ..storage.models import Message, Setting
-from ..config import settings
+from ...config import settings
 
 # Служебные маркеры — intent определяется по тексту сообщения
 INTENT_MARKERS = {
@@ -146,14 +146,14 @@ async def collect_messages(session: AsyncSession) -> int:
             telegram_message_id=msg["message_id"],
             chat_id=msg["chat"]["id"],
             author_id=user["id"],
-            author_username=user.get("username"),  # может отсутствовать
+            author_username=user.get("username"),
             author_name=user.get("first_name", "Unknown"),
             message_type=content_type,
             intent=current_intent,
-            raw_content=raw_content,
+            raw_content=raw_content if content_type != "text" else None,
+            text_content=raw_content if content_type == "text" else None,
             status="pending",
             created_at=datetime.fromtimestamp(msg["date"]),
-            # используем время Telegram, не текущее время машины
         )
         session.add(db_message)
         await session.commit()

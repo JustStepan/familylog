@@ -1,7 +1,7 @@
 import asyncio
 from aiogram import Bot
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from src.familylog.config import settings
+from config import settings
 
 # Список chat_id пользователей которым отправить клавиатуру
 # Добавь сюда ID всех членов семьи

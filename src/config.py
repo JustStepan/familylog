@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
+BASE_DIR = Path(__file__).parent.parent
 
 class Settings(BaseSettings):
     BOT_TOKEN: str
@@ -8,6 +10,7 @@ class Settings(BaseSettings):
     LM_STUDIO_URL: str = "http://localhost:1234/v1"
     OBSIDIAN_API_KEY: str
     OBSIDIAN_API_URL: str = "http://localhost:27123"
+    MODEL_PATH: str = f'{BASE_DIR}/model/parakeet-tdt-0.6b-v3-int8/'
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

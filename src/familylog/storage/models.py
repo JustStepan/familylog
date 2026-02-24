@@ -20,6 +20,7 @@ class Message(Base):
     message_type: Mapped[str] = mapped_column(String(10))
     intent: Mapped[Optional[str]] = mapped_column(String(50))
     raw_content: Mapped[Optional[str]] = mapped_column()
+    text_content: Mapped[Optional[str]] = mapped_column()
     status: Mapped[str] = mapped_column(String(50), default="pending")
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     processed_at: Mapped[Optional[datetime]] = mapped_column()

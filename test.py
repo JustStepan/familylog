@@ -1,9 +1,9 @@
 import asyncio
 import httpx
 import subprocess
-from src.familylog.config import settings
+from config import settings
 
-FILE_ID = "AwACAgIAAxkBAAIBwGmdi7XnxWFZUH0hSMvYCrWZjragAALHjgACDD7xSPlc4LdrUovbOgQ"
+FILE_ID = "AwACAgIAAxkBAAMKaZ2XJLLIY3rTVtC9air6xn2jgU0AAnmMAAI4S-hI2Y1DFvkkz0U6BA"
 
 async def download():
     async with httpx.AsyncClient(timeout=30) as client:

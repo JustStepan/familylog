@@ -7,8 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.25.0",
     "aiosqlite>=0.22.1",
+    "faster-whisper>=1.2.1",
     "greenlet>=3.3.2",
     "httpx>=0.28.1",
+    "onnx-asr>=0.10.2",
     "parakeet-mlx>=0.5.1",
     "pydantic-settings>=2.13.1",
     "python-dotenv>=1.2.1",

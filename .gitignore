@@ -18,6 +18,7 @@ wheels/
 # Local files/folders
 *_local_
 chroma_db
+model*
 
 # сасhes
 .mypy_cache

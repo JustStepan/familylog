@@ -1,9 +1,6 @@
-import mlx.core as mx
-from parakeet_mlx import from_pretrained
+import onnx_asr
+from src.config import settings
 
-model = from_pretrained(
-    "mlx-community/parakeet-tdt-0.6b-v3",
-    dtype=mx.bfloat16
-)
-result = model.transcribe("test_audio.wav")
-print(result.text)
+model = onnx_asr.load_model("nemo-conformer-tdt", settings.MODEL_PATH, quantization="int8")
+result = model.recognize("test_audio.wav")
+print(result)
