@@ -6,12 +6,14 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# Virtual environments and secrets
 .venv
+.env
 
 # DB
 *.sqlite
 *.sqlite3
+*.db
 
 # Local files/folders
 *_local_
