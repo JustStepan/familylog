@@ -3,13 +3,13 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ..storage.models import Message, Setting
-from ...config import settings
+from ..storage.models import Message, Setting, Session
+from src.config import settings
 
 # Служебные маркеры — intent определяется по тексту сообщения
 INTENT_MARKERS = {
     "📝 заметка": "note",
-    "📔 дневник": "diary", 
+    "📔 дневник": "diary",
     "📅 календарь": "calendar",
     "⏰ напоминание": "reminder",
 }
@@ -34,14 +34,55 @@ async def save_last_update_id(session: AsyncSession, update_id: int) -> None:
         select(Setting).where(Setting.key == "last_update_id")
     )
     setting = result.scalar_one_or_none()
-    
+
     if setting:
         setting.value = str(update_id)
     else:
         # Первый запуск — создаём запись
         session.add(Setting(key="last_update_id", value=str(update_id)))
-    
+
     await session.commit()
+
+
+async def get_open_session(session: AsyncSession, author_id: int) -> Session | None:
+    """Возвращает открытую сессию пользователя если есть."""
+    result = await session.execute(
+        select(Session).where(
+            Session.author_id == author_id,
+            Session.status == "open"
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def close_session(session: AsyncSession, db_session: Session) -> None:
+    """Закрывает сессию."""
+    db_session.status = "ready"
+    db_session.closed_at = datetime.now()
+    await session.commit()
+
+
+async def close_expired_sessions(session: AsyncSession) -> int:
+    """Закрывает сессии старше 2 часов. Возвращает количество закрытых."""
+    from datetime import timedelta
+    cutoff = datetime.now() - timedelta(hours=2)
+    
+    result = await session.execute(
+        select(Session).where(
+            Session.status == "open",
+            Session.last_message_at < cutoff
+        )
+    )
+    expired = result.scalars().all()
+    
+    for s in expired:
+        s.status = "ready"
+        s.closed_at = datetime.now()
+    
+    if expired:
+        await session.commit()
+    
+    return len(expired)
 
 
 def is_service_message(text: str) -> bool:
@@ -66,38 +107,38 @@ async def fetch_updates(offset: int) -> list[dict]:
             }
         )
         data = response.json()
-        
+
         if not data["ok"]:
             raise Exception(f"Telegram API error: {data}")
-        
+
         return data["result"]
 
 
 async def collect_messages(session: AsyncSession) -> int:
     """Основная функция сбора сообщений.
     Возвращает количество сохранённых сообщений."""
-    
+
     last_update_id = await get_last_update_id(session)
     updates = await fetch_updates(last_update_id)
-    
+
     if not updates:
         return 0
-    
+
     saved_count = 0
     current_intent = "unknown"
     expecting_content = False  # ждём ли содержательное сообщение
-    
+
     for update in updates:
         # update_id — уникальный номер каждого события от Telegram
         update_id = update["update_id"]
-        
+
         # Нас интересуют только сообщения, не другие события
         if "message" not in update:
             await save_last_update_id(session, update_id)
             continue
-        
+
         msg = update["message"]
-        
+
         if "text" in msg:
             text = msg["text"]
 
@@ -113,34 +154,36 @@ async def collect_messages(session: AsyncSession) -> int:
             # был без содержательного. Обновляем intent на новый маркер.
             if expecting_content and is_service_message(text):
                 current_intent = parse_intent(text)
-                print(f"DEBUG: повторный маркер '{text}' → intent='{current_intent}'")
+                print(
+                    f"DEBUG: повторный маркер '{text}' → intent='{current_intent}'")
                 await save_last_update_id(session, update_id)
                 continue
 
             # Это содержательное сообщение
             content_type = "text"
             raw_content = text
-            print(f"DEBUG: содержательное '{text}' → intent='{current_intent}'")
-            
+            print(
+                f"DEBUG: содержательное '{text}' → intent='{current_intent}'")
+
         elif "voice" in msg:
             content_type = "voice"
             # file_id — временный ID файла на серверах Telegram
             # скачаем позже в processor
             raw_content = msg["voice"]["file_id"]
-            
+
         elif "photo" in msg:
             content_type = "photo"
             # photo — список размеров, берём последний (максимальное качество)
             raw_content = msg["photo"][-1]["file_id"]
-            
+
         else:
             # Неподдерживаемый тип — пропускаем
             await save_last_update_id(session, update_id)
             continue
-        
+
         # Извлекаем данные об авторе
         user = msg["from"]
-        
+
         # Сохраняем сообщение в БД
         db_message = Message(
             telegram_message_id=msg["message_id"],
@@ -157,10 +200,10 @@ async def collect_messages(session: AsyncSession) -> int:
         )
         session.add(db_message)
         await session.commit()
-        
+
         saved_count += 1
         current_intent = "unknown"
         expecting_content = False  # сбросили — снова ждём маркер
         await save_last_update_id(session, update_id)
-    
+
     return saved_count

@@ -7,7 +7,7 @@ import onnx_asr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import settings
+from src.config import settings
 from ..storage.models import Message
 
 # Папка для временных файлов — удаляем после обработки
