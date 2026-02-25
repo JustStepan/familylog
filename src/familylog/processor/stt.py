@@ -77,6 +77,7 @@ async def process_voice_messages(session: AsyncSession) -> int:
         )
     )
     messages = result.scalars().all()
+    print(messages)
 
     if not messages:
         return 0
@@ -88,7 +89,7 @@ async def process_voice_messages(session: AsyncSession) -> int:
         wav_path = None
 
         try:
-            print(f"Обрабатываем сообщение {msg.id}...")
+            print(f"Обрабатываем аудио сообщение {msg.id}...")
 
             # Скачиваем файл
             ogg_path = await download_file(msg.raw_content, MEDIA_DIR, "ogg")

@@ -24,6 +24,7 @@ async def download_file(file_id: str, dest_dir: Path, extension: str) -> Path:
             f"https://api.telegram.org/file/bot{settings.BOT_TOKEN}/{telegram_path}"
         )
         r.raise_for_status()
+        print(r)
 
     file_path = dest_dir / f"{file_id}.{extension}"
     file_path.write_bytes(r.content)

@@ -16,7 +16,7 @@ wheels/
 *.db
 
 # Local files/folders
-*_local_
+_local_*
 chroma_db
 model*
 
