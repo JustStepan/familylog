@@ -12,7 +12,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
 
     try:
         response = client.chat.completions.create(
-            model='qwen/qwen3-vl-8b',
+            model='qwen/qwen3-vl-8b', # qwen3.5-35b-a3b qwen/qwen3-vl-8b glm-4.6v-flash
             messages=[
                 {
                     "role": "system",
@@ -32,7 +32,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"Представь краткое, но точное описание фотографии. caption_prompt: {caption_prompt}"},
+                        {"type": "text", "text": f"Представь описание фотографии. caption_prompt: {caption_prompt}"},
                         
                         {
                             "type": "image_url",
