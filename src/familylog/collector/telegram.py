@@ -18,26 +18,37 @@ TG_API = f"https://api.telegram.org/bot{settings.BOT_TOKEN}"
 
 # ─── Вспомогательные функции ────────────────────────────────────────────────
 
-async def get_last_update_id(session: AsyncSession) -> int:
+async def get_setting(session: AsyncSession, key: str) -> str | None:
+    """Читает произвольное значение из таблицы Settings по ключу."""
     result = await session.execute(
-        select(Setting).where(Setting.key == "last_update_id")
+        select(Setting).where(Setting.key == key)
     )
     setting = result.scalar_one_or_none()
-    return int(setting.value) if setting else 0
+    return setting.value if setting else None
 
 
-async def save_last_update_id(session: AsyncSession, update_id: int) -> None:
+async def save_setting(session: AsyncSession, key: str, value: str) -> None:
+    """Сохраняет произвольное значение в таблицу Settings."""
     result = await session.execute(
-        select(Setting).where(Setting.key == "last_update_id")
+        select(Setting).where(Setting.key == key)
     )
     setting = result.scalar_one_or_none()
 
     if setting:
-        setting.value = str(update_id)
+        setting.value = value
     else:
-        session.add(Setting(key="last_update_id", value=str(update_id)))
+        session.add(Setting(key=key, value=value))
 
     await session.commit()
+
+
+async def get_last_update_id(session: AsyncSession) -> int:
+    value = await get_setting(session, "last_update_id")
+    return int(value) if value else 0
+
+
+async def save_last_update_id(session: AsyncSession, update_id: int) -> None:
+    await save_setting(session, "last_update_id", str(update_id))
 
 
 async def get_open_session(session: AsyncSession, author_id: int) -> Session | None:
@@ -58,9 +69,7 @@ async def close_session(session: AsyncSession, db_session: Session) -> None:
 
 async def close_all_open_sessions(session: AsyncSession) -> int:
     result = await session.execute(
-        select(Session).where(
-            Session.status == "open"
-        )
+        select(Session).where(Session.status == "open")
     )
     open_sessions = result.scalars().all()
 
@@ -72,27 +81,6 @@ async def close_all_open_sessions(session: AsyncSession) -> int:
         await session.commit()
 
     return len(open_sessions)
-
-# async def close_expired_sessions(session: AsyncSession) -> int:
-#     from datetime import timedelta
-#     cutoff = datetime.now() - timedelta(hours=2)
-
-#     result = await session.execute(
-#         select(Session).where(
-#             Session.status == "open",
-#             Session.last_message_at < cutoff
-#         )
-#     )
-#     expired = result.scalars().all()
-
-#     for s in expired:
-#         s.status = "ready"
-#         s.closed_at = datetime.now()
-
-#     if expired:
-#         await session.commit()
-
-#     return len(expired)
 
 
 def is_service_message(text: str) -> bool:
@@ -117,8 +105,6 @@ async def fetch_updates(offset: int) -> list[dict]:
         return data["result"]
 
 
-# ─── Создание сессии ────────────────────────────────────────────────────────
-
 async def open_session(
     db: AsyncSession,
     author_id: int,
@@ -127,10 +113,9 @@ async def open_session(
     msg_timestamp: datetime,
 ) -> Session:
     """Создаёт новую открытую сессию и возвращает её с заполненным id.
-    
+
     flush() отправляет INSERT в БД в рамках текущей транзакции,
     что даёт нам session.id — но не делает COMMIT.
-    Это важно: если последующий код упадёт, транзакция откатится.
     """
     new_session = Session(
         chat_id=chat_id,
@@ -141,10 +126,7 @@ async def open_session(
         last_message_at=msg_timestamp,
     )
     db.add(new_session)
-
-    # flush → INSERT выполнен → id присвоен → транзакция ещё открыта
     await db.flush()
-
     return new_session
 
 
@@ -154,12 +136,11 @@ async def collect_messages(session: AsyncSession) -> int:
     """Собирает новые сообщения из Telegram и сохраняет в БД.
 
     Логика сессий:
-    - Маркер ("📝 заметка") → закрыть старую сессию, открыть новую
-    - Контент без маркера  → привязать к открытой сессии (или создать с intent="unknown")
-
-    Возвращает количество сохранённых сообщений (не считая маркеры).
+    - Маркер → закрыть старую сессию, открыть новую, сохранить last_intent
+    - Контент с открытой сессией → привязать к ней
+    - Контент без открытой сессии → открыть сессию с last_intent пользователя
+      (или "unknown" если маркеров ещё не было)
     """
-
     last_update_id = await get_last_update_id(session)
     updates = await fetch_updates(last_update_id)
 
@@ -171,7 +152,6 @@ async def collect_messages(session: AsyncSession) -> int:
     for update in updates:
         update_id = update["update_id"]
 
-        # Нас интересуют только message-события
         if "message" not in update:
             await save_last_update_id(session, update_id)
             continue
@@ -180,8 +160,6 @@ async def collect_messages(session: AsyncSession) -> int:
         user = msg["from"]
         author_id = user["id"]
         chat_id = msg["chat"]["id"]
-
-        # Время сообщения берём из Telegram (Unix timestamp → datetime)
         msg_timestamp = datetime.fromtimestamp(msg["date"])
 
         # ── Разбираем тип контента ──────────────────────────────────────────
@@ -189,25 +167,26 @@ async def collect_messages(session: AsyncSession) -> int:
         if "text" in msg:
             text = msg["text"]
 
-            # Маркер интента — не контент, а управляющее сообщение
             if is_service_message(text):
                 intent = parse_intent(text)
                 print(f"DEBUG: маркер '{text}' → intent='{intent}'")
 
-                # Закрываем предыдущую открытую сессию этого пользователя
+                # Закрываем предыдущую открытую сессию
                 existing = await get_open_session(session, author_id)
                 if existing:
                     await close_session(session, existing)
                     print(f"DEBUG: закрыта сессия id={existing.id}")
 
-                # Открываем новую сессию с нужным интентом
+                # Открываем новую сессию
                 await open_session(session, author_id, chat_id, intent, msg_timestamp)
+
+                # Запоминаем последний intent пользователя
+                await save_setting(session, f"last_intent_{author_id}", intent)
                 await session.commit()
 
                 await save_last_update_id(session, update_id)
-                continue  # маркер не сохраняем как Message
+                continue
 
-            # Обычный текст — это контент
             content_type = "text"
             raw_content = None
             text_content = text
@@ -215,18 +194,17 @@ async def collect_messages(session: AsyncSession) -> int:
 
         elif "voice" in msg:
             content_type = "voice"
-            raw_content = msg["voice"]["file_id"]  # скачаем позже в stt.py
+            raw_content = msg["voice"]["file_id"]
             text_content = None
             caption = None
 
         elif "photo" in msg:
             content_type = "photo"
-            raw_content = msg["photo"][-1]["file_id"]  # максимальное качество
+            raw_content = msg["photo"][-1]["file_id"]
             text_content = None
-            caption = msg.get("caption")  # подпись к фото (опционально)
+            caption = msg.get("caption")
 
         else:
-            # Неподдерживаемый тип — пропускаем
             await save_last_update_id(session, update_id)
             continue
 
@@ -235,14 +213,13 @@ async def collect_messages(session: AsyncSession) -> int:
         current_session = await get_open_session(session, author_id)
 
         if current_session is None:
-            # Контент пришёл без маркера — создаём сессию с unknown intent
-            print(f"DEBUG: нет открытой сессии для author_id={author_id}, создаём unknown")
+            # Нет открытой сессии — берём последний известный intent
+            last_intent = await get_setting(session, f"last_intent_{author_id}") or "unknown"
+            print(f"DEBUG: нет открытой сессии, используем last_intent='{last_intent}'")
             current_session = await open_session(
-                session, author_id, chat_id, "unknown", msg_timestamp
+                session, author_id, chat_id, last_intent, msg_timestamp
             )
 
-        # Обновляем время последнего сообщения в сессии
-        # (используется для таймаута 2ч)
         current_session.last_message_at = msg_timestamp
 
         # ── Сохраняем сообщение ─────────────────────────────────────────────
@@ -254,7 +231,7 @@ async def collect_messages(session: AsyncSession) -> int:
             author_username=user.get("username"),
             author_name=user.get("first_name", "Unknown"),
             message_type=content_type,
-            intent=current_session.intent,  # наследуем от сессии
+            intent=current_session.intent,
             session_id=current_session.id,
             raw_content=raw_content,
             text_content=text_content,
