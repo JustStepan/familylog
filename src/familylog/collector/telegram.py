@@ -56,26 +56,43 @@ async def close_session(session: AsyncSession, db_session: Session) -> None:
     await session.commit()
 
 
-async def close_expired_sessions(session: AsyncSession) -> int:
-    from datetime import timedelta
-    cutoff = datetime.now() - timedelta(hours=2)
-
+async def close_all_open_sessions(session: AsyncSession) -> int:
     result = await session.execute(
         select(Session).where(
-            Session.status == "open",
-            Session.last_message_at < cutoff
+            Session.status == "open"
         )
     )
-    expired = result.scalars().all()
+    open_sessions = result.scalars().all()
 
-    for s in expired:
+    for s in open_sessions:
         s.status = "ready"
         s.closed_at = datetime.now()
 
-    if expired:
+    if open_sessions:
         await session.commit()
 
-    return len(expired)
+    return len(open_sessions)
+
+# async def close_expired_sessions(session: AsyncSession) -> int:
+#     from datetime import timedelta
+#     cutoff = datetime.now() - timedelta(hours=2)
+
+#     result = await session.execute(
+#         select(Session).where(
+#             Session.status == "open",
+#             Session.last_message_at < cutoff
+#         )
+#     )
+#     expired = result.scalars().all()
+
+#     for s in expired:
+#         s.status = "ready"
+#         s.closed_at = datetime.now()
+
+#     if expired:
+#         await session.commit()
+
+#     return len(expired)
 
 
 def is_service_message(text: str) -> bool:
@@ -139,15 +156,9 @@ async def collect_messages(session: AsyncSession) -> int:
     Логика сессий:
     - Маркер ("📝 заметка") → закрыть старую сессию, открыть новую
     - Контент без маркера  → привязать к открытой сессии (или создать с intent="unknown")
-    - Таймаут 2ч           → close_expired_sessions закрывает зависшие
 
     Возвращает количество сохранённых сообщений (не считая маркеры).
     """
-
-    # Сначала закрываем сессии, которые висят больше 2 часов
-    expired = await close_expired_sessions(session)
-    if expired:
-        print(f"Закрыто зависших сессий: {expired}")
 
     last_update_id = await get_last_update_id(session)
     updates = await fetch_updates(last_update_id)

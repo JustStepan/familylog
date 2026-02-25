@@ -1,7 +1,6 @@
 import subprocess
 from pathlib import Path
 
-import httpx
 import onnx_asr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

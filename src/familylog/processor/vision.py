@@ -63,7 +63,7 @@ async def process_photo_messages(session: AsyncSession) -> int:
 
         except Exception as e:
             print(f"  Ошибка: {e}")
-            msg.status = "error_stt"
+            msg.status = "error_img"
             await session.commit()
 
     return processed_count

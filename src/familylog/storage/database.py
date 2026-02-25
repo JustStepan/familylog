@@ -5,7 +5,7 @@ from ...config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True  # убрать в продакшене
+    echo=False  # вывод SQL в стандартный вывод для отладки
 )
 
 AsyncSessionLocal = async_sessionmaker(
