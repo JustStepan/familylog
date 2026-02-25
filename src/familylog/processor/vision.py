@@ -1,53 +1,17 @@
 import base64
-from typing import Optional
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
+from ..schema.llm import PhotoOutput
+
+from ..LLMs_calls.calls import llm_process_photo
 from ..storage.models import Message
 from ..storage.telegram_files import download_file
-from openai import OpenAI
-
-
-
-client = OpenAI(
-    base_url="http://localhost:1234/v1",
-    api_key="dummy-key",
-)
 
 
 MEDIA_DIR = Path("media/images")
 
-
-def llm_process_photo(base64_str: str, capture: Optional[str]) -> str:
-    capture_prompt = ''
-    if capture:
-        capture_prompt = f'Заголовок фотографии {capture} - учитывай это при составлении описания'
-
-    try:
-        response = client.chat.completions.create(
-            model='zai-org/glm-4.6v-flash',
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"Представь краткое, но точное описание фотографии. {capture_prompt}"},
-                        
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_str}"
-                            }
-                        }
-                    ]
-                }
-            ],
-            temperature=0.1,
-            max_tokens=300,
-        )
-        return response.choices[0].message.content
-
-    except Exception as e:
-        return f"Ошибка API: {e}"
 
 def image_to_base64(filepath: Path) -> str:
     with open(filepath, 'rb') as f:
@@ -75,7 +39,7 @@ async def process_photo_messages(session: AsyncSession) -> int:
 
     for msg in messages:
         photo_path = None
-        photo_capture = msg.caption or None
+        photo_caption = msg.caption or None
 
         try:
             print(f"Обрабатываем фото сообщение {msg.id}...")
@@ -85,12 +49,13 @@ async def process_photo_messages(session: AsyncSession) -> int:
 
             # получаем описание
             base64_str = image_to_base64(photo_path)
-            description = llm_process_photo(base64_str, photo_capture)
-
-            print(f"  Описание: {description[:50]}...")
+            description = llm_process_photo(base64_str, photo_caption)
 
             # Обновляем запись в БД
-            msg.text_content = description
+            output = PhotoOutput.model_validate_json(description)
+            msg.caption = output.caption  # обновляем заголовок
+            msg.text_content = f"Заголовок: {output.caption}. Описание: {output.description}"
+            print(f"  Описание LLM: {msg.text_content[:100]}...")
             msg.status = "described"
             await session.commit()
 
@@ -100,10 +65,5 @@ async def process_photo_messages(session: AsyncSession) -> int:
             print(f"  Ошибка: {e}")
             msg.status = "error_stt"
             await session.commit()
-
-        # finally:
-            # Удаляем временные файлы в любом случае
-            # if photo_path:
-            #     cleanup(photo_path)
 
     return processed_count

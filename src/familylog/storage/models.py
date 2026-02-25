@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-
+# sqlite3 -header -csv familylog.db "SELECT * FROM messages;" > messages.csv
 class Base(DeclarativeBase):
     pass
 
