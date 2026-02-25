@@ -19,6 +19,7 @@ wheels/
 _local_*
 chroma_db
 model*
+media*
 
 # сасhes
 .mypy_cache
