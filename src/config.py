@@ -8,10 +8,7 @@ class Settings(BaseSettings):
     # Инфраструктура
     BOT_TOKEN: str
     DATABASE_URL: str = "sqlite+aiosqlite:///familylog.db"
-    CONTEXT_MEMORY_DAYS: int = 30
-
-    LM_STUDIO_URL: str = "http://localhost:1234/v1"      # для OpenAI клиента
-    LM_STUDIO_BASE_URL: str = "http://localhost:1234"    # для model_manager
+    CONTEXT_MEMORY_DAYS: int = 90
 
     # Obsidian
     OBSIDIAN_VAULT_PATH: str
@@ -43,11 +40,12 @@ class Settings(BaseSettings):
     VISION_MODEL_ONLINE: str = "qwen/qwen-vl-plus"
 
     # LLM
-    LLM_MODEL_OFFLINE: str = "google/gemma-3-12b"
+    LLM_MODEL_OFFLINE: str = "openai/gpt-oss-20b"
     LLM_MODEL_ONLINE: str = "anthropic/claude-3-haiku"
 
     # API endpoints
     LM_STUDIO_URL: str = "http://localhost:1234/v1"
+    LM_STUDIO_BASE_URL: str = "http://localhost:1234"    # для model_manager
     OPENROUTER_API_KEY: str = "FAKE"
     OPENROUTER_URL: str = "https://openrouter.ai/api/v1"
 

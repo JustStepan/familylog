@@ -2,6 +2,8 @@ import base64
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from slugify import slugify
+from datetime import datetime
 
 from ..schema.llm import PhotoOutput
 
@@ -19,6 +21,12 @@ def image_to_base64(filepath: Path) -> str:
         base64_string = base64_bytes.decode('ascii')
         return base64_string
     
+
+def make_photo_filename(caption: str, created_at: datetime) -> str:
+    date_str = created_at.strftime("%Y-%m-%d")
+    slug = slugify(caption, max_length=50, separator="_")
+    return f"photo_{date_str}_{slug}.jpg"
+
 
 async def process_photo_messages(session: AsyncSession) -> int:
     """Функция извлечение фото из базы данных."""

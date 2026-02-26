@@ -10,15 +10,11 @@ from ..LLMs_calls.calls import llm_process_session
 from ..storage.models import Session
 from src.config import settings
 
-# Сколько дней истории загружать из CURRENT_CONTEXT.md
-CONTEXT_MEMORY_DAYS: int = 90
-
-
 # ─── Obsidian API ────────────────────────────────────────────────────────────
 
 async def obsidian_get(path: str) -> str | None:
     """Читает файл из vault. Возвращает содержимое или None если не существует."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(verify=False) as client:
         r = await client.get(
             f"{settings.OBSIDIAN_API_URL}/vault/{path}",
             headers={"Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}"},
@@ -31,7 +27,7 @@ async def obsidian_get(path: str) -> str | None:
 
 async def obsidian_create(path: str, content: str) -> None:
     """Создаёт или полностью заменяет файл в vault."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(verify=False) as client:
         r = await client.put(
             f"{settings.OBSIDIAN_API_URL}/vault/{path}",
             headers={
@@ -62,7 +58,7 @@ async def load_system_file(filename: str) -> str:
 
 def parse_current_context(content: str) -> str:
     """Парсит CURRENT_CONTEXT.md и возвращает только записи новее CONTEXT_MEMORY_DAYS."""
-    cutoff = datetime.now() - timedelta(days=CONTEXT_MEMORY_DAYS)
+    cutoff = datetime.now() - timedelta(days=settings.CONTEXT_MEMORY_DAYS)
     lines = content.split("\n")
 
     result = []
@@ -186,7 +182,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             )
 
             # Парсим JSON ответ
-            output_data = json.loads(llm_output)
+            output_data = json.loads(extract_json(llm_output))
 
             # Записываем в Obsidian
             await write_to_obsidian(output_data)
@@ -203,3 +199,13 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             await session.commit()
 
     return processed_count
+
+
+def extract_json(raw: str) -> str:
+    """Извлекает JSON из ответа reasoning модели."""
+    # Убираем служебный префикс reasoning моделей
+    if "<|message|>" in raw:
+        raw = raw.split("<|message|>")[-1]
+    # Убираем markdown code fences если есть
+    raw = raw.strip().strip("```json").strip("```").strip()
+    return raw

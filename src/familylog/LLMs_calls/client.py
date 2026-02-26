@@ -2,7 +2,7 @@ from openai import OpenAI
 from src.config import settings
 
 
-_conection = None
+_connection = None
 
 
 def get_client():

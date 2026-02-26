@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ..processor.obsidian_writer import CONTEXT_MEMORY_DAYS
+from src.config import settings
 from .client import get_client
 
 
@@ -79,7 +79,7 @@ Author: {author_name}
 ## Tags Glossary
 {context['tags_glossary']}
 
-## Current Context (last {CONTEXT_MEMORY_DAYS} days)
+## Current Context (last {settings.CONTEXT_MEMORY_DAYS} days)
 {context['current_context']}
 
 Return ONLY valid JSON as specified in Agent Configuration. No markdown fences, no explanation.

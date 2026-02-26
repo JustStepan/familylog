@@ -24,7 +24,8 @@ async def assemble_sessions(session: AsyncSession) -> int:
         messages = messages_result.scalars().all()
 
         if not messages:
-            continue  # пустая сессия — пропускаем
+            s.status = "empty"
+            continue
 
         parts = []
         for msg in messages:
