@@ -62,6 +62,13 @@ class Message(Base):
     photo_filename: Mapped[Optional[str]] = mapped_column()
     # подпись к фото если пользователь её добавил
 
+    # блок для пересланных сообщений
+    original_caption: Mapped[Optional[str]] = mapped_column()
+    is_forwarded: Mapped[bool] = mapped_column(default=False)
+    forward_from_name: Mapped[Optional[str]] = mapped_column(String(100))
+    forward_from_username: Mapped[Optional[str]] = mapped_column(String(100))
+    forward_post_url: Mapped[Optional[str]] = mapped_column(String(200))
+
     text_content: Mapped[Optional[str]] = mapped_column()
     # для text — оригинальный текст
     # для voice — результат STT

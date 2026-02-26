@@ -63,6 +63,7 @@ async def process_photo_messages(session: AsyncSession) -> int:
             output = PhotoOutput.model_validate_json(description)
             filename = make_photo_filename(output.caption, msg.created_at)
             msg.photo_filename = filename
+            msg.original_caption = msg.caption # сохраняем до перезаписи
             msg.caption = output.caption  # обновляем заголовок
             msg.text_content = f"Заголовок: {output.caption}. Описание: {output.description}"
             print(f"  Описание LLM: {msg.text_content[:100]}...")

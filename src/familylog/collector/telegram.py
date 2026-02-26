@@ -95,7 +95,7 @@ async def fetch_updates(offset: int) -> list[dict]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
             f"{TG_API}/getUpdates",
-            params={"offset": offset + 1, "limit": 100, "timeout": 10},
+            params={"offset": offset + 1, "limit": 200, "timeout": 10},
         )
         data = response.json()
 
@@ -132,6 +132,36 @@ async def open_session(
 
 # ─── Основная функция ────────────────────────────────────────────────────────
 
+def parse_forward(msg: dict) -> dict:
+    """Извлекает метаданные пересланного сообщения."""
+    origin = msg.get("forward_origin")
+    if not origin:
+        return {}
+    
+    if origin["type"] == "channel":
+        chat = origin["chat"]
+        username = chat.get("username")
+        msg_id = origin.get("message_id")
+        url = f"https://t.me/{username}/{msg_id}" if username and msg_id else None
+        return {
+            "is_forwarded": True,
+            "forward_from_name": chat.get("title"),
+            "forward_from_username": username,
+            "forward_post_url": url,
+        }
+    
+    elif origin["type"] == "user":
+        user = origin["sender_user"]
+        name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+        return {
+            "is_forwarded": True,
+            "forward_from_name": name,
+            "forward_from_username": user.get("username"),
+            "forward_post_url": None,
+        }
+    
+    return {}
+
 async def collect_messages(session: AsyncSession) -> int:
     """Собирает новые сообщения из Telegram и сохраняет в БД.
 
@@ -167,11 +197,12 @@ async def collect_messages(session: AsyncSession) -> int:
         if "text" in msg:
             text = msg["text"]
 
+            # Блок обработки сервисных сообщений и работы с сессиями
             if is_service_message(text):
                 intent = parse_intent(text)
                 print(f"DEBUG: маркер '{text}' → intent='{intent}'")
 
-                # Закрываем предыдущую открытую сессию
+                # Закрываем предыдущую открытую сессию этого автора
                 existing = await get_open_session(session, author_id)
                 if existing:
                     await close_session(session, existing)
@@ -194,15 +225,22 @@ async def collect_messages(session: AsyncSession) -> int:
 
         elif "voice" in msg:
             content_type = "voice"
-            raw_content = msg["voice"]["file_id"]
+            raw_content = msg["voice"]["file_id"] # Здесь пока только ссылка на файл
             text_content = None
             caption = None
 
         elif "photo" in msg:
             content_type = "photo"
-            raw_content = msg["photo"][-1]["file_id"]
+            raw_content = msg["photo"][-1]["file_id"] # Здесь пока только ссылка на файл [-1] - это лучшее качество
             text_content = None
-            caption = msg.get("caption")
+            caption = msg.get("caption") # Заголовок если передан с фото
+            
+            # Помечаем пересланные сообщения
+            forward = msg.get("forward_origin")
+            if forward and forward.get("type") == "channel":
+                channel = forward["chat"]
+                forward_info = f"[Переслано из @{channel.get('username', channel['title'])}]"
+                caption = f"{forward_info}\n{caption}" if caption else forward_info # Если переслано то в заголовке описание поста (обычно так)
 
         else:
             await save_last_update_id(session, update_id)
@@ -223,6 +261,9 @@ async def collect_messages(session: AsyncSession) -> int:
         current_session.last_message_at = msg_timestamp
 
         # ── Сохраняем сообщение ─────────────────────────────────────────────
+        
+        forward_data = parse_forward(msg)
+
 
         db_message = Message(
             telegram_message_id=msg["message_id"],
@@ -238,6 +279,11 @@ async def collect_messages(session: AsyncSession) -> int:
             caption=caption,
             status="pending",
             created_at=msg_timestamp,
+            original_caption=caption,  # сохраняем до vision обработки
+            is_forwarded=forward_data.get("is_forwarded", False),
+            forward_from_name=forward_data.get("forward_from_name"),
+            forward_from_username=forward_data.get("forward_from_username"),
+            forward_post_url=forward_data.get("forward_post_url"),
         )
         session.add(db_message)
         await session.commit()

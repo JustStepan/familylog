@@ -29,16 +29,21 @@ async def assemble_sessions(session: AsyncSession) -> int:
 
         parts = []
         for msg in messages:
-            fallback = f"[Ошибка обработки, message_id={msg.id}]: текст недоступен"
+            forward_header = format_forward_header(msg)
+            fallback = f"[Ошибка обработки, message_id={msg.id}]"
             text = msg.text_content or fallback
 
             if msg.message_type == "text":
-                parts.append(f"[Текст]: {text}")
+                content = f"{forward_header}\n[Текст]: {text}" if forward_header else f"[Текст]: {text}"
+                parts.append(content)
             elif msg.message_type == "voice":
-                parts.append(f"[Аудио]: {text}")
+                content = f"{forward_header}\n[Аудио]: {text}" if forward_header else f"[Аудио]: {text}"
+                parts.append(content)
             elif msg.message_type == "photo":
                 fn = f" filename={msg.photo_filename}" if msg.photo_filename else ""
-                parts.append(f"[Фото{fn}]: {text}")
+                original = f"\n[Оригинальный текст]: {msg.original_caption}" if msg.original_caption and len(msg.original_caption) > 100 else ""
+                content = f"{forward_header}\n[Фото{fn}]: {text}{original}" if forward_header else f"[Фото{fn}]: {text}{original}"
+                parts.append(content)
 
             msg.status = "assembled" 
 
@@ -49,3 +54,18 @@ async def assemble_sessions(session: AsyncSession) -> int:
 
     await session.commit()
     return processed_count
+
+
+def format_forward_header(msg) -> str:
+    """Формирует заголовок пересланного сообщения."""
+    if not msg.is_forwarded:
+        return ""
+    parts = ["[Переслано"]
+    if msg.forward_from_username:
+        parts.append(f"из @{msg.forward_from_username}")
+    elif msg.forward_from_name:
+        parts.append(f"от {msg.forward_from_name}")
+    if msg.forward_post_url:
+        parts.append(f"| {msg.forward_post_url}")
+    parts.append("]")
+    return " ".join(parts)
