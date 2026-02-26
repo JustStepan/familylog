@@ -22,12 +22,14 @@ def get_model():
     global _model
     if _model is None:
         _model = onnx_asr.load_model(
-            "nemo-conformer-tdt",
-            settings.MODEL_PATH,
-            quantization="int8"
+            settings.STT_MODEL_OFFLINE,
+            settings.STT_MODEL_PATH,
+            # quantization="int8",        # раскомментировать для Parakeet
+            providers=["CPUExecutionProvider"],
+            # providers=["CoreMLExecutionProvider", "CPUExecutionProvider"],  # раскомментировать на Intel Mac / Windows / Linux для ускорения
+            # providers=["CUDAExecutionProvider", "CPUExecutionProvider"],    # раскомментировать при наличии NVIDIA GPU
         )
     return _model
-
 
 def convert_to_wav(ogg_path: Path) -> Path:
     """Конвертирует .ogg в .wav через ffmpeg.

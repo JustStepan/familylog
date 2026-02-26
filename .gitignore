@@ -17,8 +17,7 @@ wheels/
 
 # Local files/folders
 _local_*
-chroma_db
-model*
+stt_models/
 media*
 
 # сасhes

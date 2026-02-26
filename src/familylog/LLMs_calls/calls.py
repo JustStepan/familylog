@@ -1,6 +1,6 @@
 from typing import Optional
 
-
+from ..processor.obsidian_writer import CONTEXT_MEMORY_DAYS
 from .client import get_client
 
 
@@ -50,3 +50,49 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
 
     except Exception as e:
         return f"Ошибка API: {e}"
+
+
+def llm_process_session(
+    assembled_content: str,
+    intent: str,
+    author_name: str,
+    created_at,
+    context: dict,
+) -> str:
+    """Обрабатывает assembled_content и возвращает JSON для записи в Obsidian."""
+    client = get_client()
+
+    now_str = created_at.strftime("%Y-%m-%d %H:%M") if created_at else "unknown"
+
+    system_prompt = f"""
+You are a family memory assistant writing structured Obsidian notes.
+
+Current datetime: {now_str}
+Author: {author_name}
+
+## Agent Configuration
+{context['agent_config']}
+
+## Family Memory
+{context['family_memory']}
+
+## Tags Glossary
+{context['tags_glossary']}
+
+## Current Context (last {CONTEXT_MEMORY_DAYS} days)
+{context['current_context']}
+
+Return ONLY valid JSON as specified in Agent Configuration. No markdown fences, no explanation.
+"""
+
+    response = client.chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Intent: {intent}\n\nContent:\n{assembled_content}"},
+        ],
+        temperature=0.1,
+        max_tokens=2000,
+    )
+
+    return response.choices[0].message.content
