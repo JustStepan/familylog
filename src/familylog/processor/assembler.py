@@ -41,7 +41,7 @@ async def assemble_sessions(session: AsyncSession) -> int:
                 parts.append(content)
             elif msg.message_type == "photo":
                 fn = f" filename={msg.photo_filename}" if msg.photo_filename else ""
-                original = f"\n[Оригинальный текст]: {msg.original_caption}" if msg.original_caption and len(msg.original_caption) > 100 else ""
+                original = f"\n[Оригинальный текст]: {msg.original_caption}" if msg.original_caption else ""
                 content = f"{forward_header}\n[Фото{fn}]: {text}{original}" if forward_header else f"[Фото{fn}]: {text}{original}"
                 parts.append(content)
 

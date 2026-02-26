@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     DATABASE_URL: str = "sqlite+aiosqlite:///familylog.db"
     CONTEXT_MEMORY_DAYS: int = 90
+    SESSION_TIMEOUT_MINUTES: int = 30
 
     # Obsidian
     OBSIDIAN_VAULT_PATH: str
