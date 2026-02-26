@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import frontmatter as fm
 
 import httpx
+from slugify import slugify
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,6 +146,143 @@ def resolve_author(author_id: int, family_memory: str) -> str:
     return f"user_{author_id}"
 
 
+# ─── Генерация имён файлов ────────────────────────────────────────────────
+
+RUSSIAN_MONTHS = [
+    "янв", "фев", "мар", "апр", "май", "июн",
+    "июл", "авг", "сен", "окт", "ноя", "дек",
+]
+
+INTENT_FOLDERS = {
+    "note": "notes",
+    "diary": "diary",
+    "calendar": "calendar",
+    "reminder": "reminders",
+}
+
+
+def generate_filename(title: str, intent: str, created_at: datetime) -> str:
+    """Генерирует путь файла в Obsidian vault.
+
+    Формат: notes/26-фев-26(22:38)_slug.md
+    Дневник: diary/26-фев-26(22:38)_дневник.md
+    Календарь: calendar/2026-02.md
+    Напоминания: reminders/reminders.md
+    """
+    folder = INTENT_FOLDERS.get(intent, "notes")
+
+    if intent == "calendar":
+        return f"{folder}/{created_at.strftime('%Y-%m')}.md"
+
+    if intent == "reminder":
+        return f"{folder}/reminders.md"
+
+    day = f"{created_at.day:02d}"
+    month = RUSSIAN_MONTHS[created_at.month - 1]
+    year = f"{created_at.year % 100:02d}"
+    time_str = f"{created_at.hour:02d}:{created_at.minute:02d}"
+    date_part = f"{day}-{month}-{year}({time_str})"
+
+    if intent == "diary":
+        return f"{folder}/{date_part}_дневник.md"
+
+    # note и любой fallback
+    slug = slugify(title, max_length=50, separator="_")
+    if not slug:
+        slug = "zametka"
+    return f"{folder}/{date_part}_{slug}.md"
+
+
+# ─── Обновление системных файлов ──────────────────────────────────────────
+
+async def update_current_context(context_summary: str) -> None:
+    """Добавляет краткое описание записи в CURRENT_CONTEXT.md."""
+    if not context_summary:
+        return
+
+    path = "_system/CURRENT_CONTEXT.md"
+    content = await obsidian_get(path)
+    today_header = f"## {datetime.now().strftime('%Y-%m-%d')}"
+
+    if content is None:
+        content = f"# Current Context\n\n{today_header}\n- {context_summary}\n"
+        await obsidian_create(path, content)
+        return
+
+    if today_header in content:
+        # Сегодня — всегда последняя секция, дописываем в конец
+        content = content.rstrip() + f"\n- {context_summary}\n"
+    else:
+        content = content.rstrip() + f"\n\n{today_header}\n- {context_summary}\n"
+
+    await obsidian_create(path, content)
+    print(f"  Обновлён CURRENT_CONTEXT: {context_summary[:60]}...")
+
+
+async def update_tags_glossary(tags: list[str]) -> None:
+    """Добавляет новые теги в TAGS_GLOSSARY.md в секцию 'Автодобавленные'."""
+    if not tags:
+        return
+
+    path = "_system/TAGS_GLOSSARY.md"
+    content = await obsidian_get(path)
+    if content is None:
+        return
+
+    # Собираем существующие теги
+    existing_tags = set()
+    for line in content.split("\n"):
+        for word in line.strip().split():
+            if word.startswith("#") and not word.startswith("##"):
+                existing_tags.add(word.rstrip("—:,."))
+
+    new_tags = [t for t in tags if t not in existing_tags]
+    if not new_tags:
+        return
+
+    auto_section = "## Автодобавленные"
+    new_lines = "\n".join(f"- {tag}" for tag in new_tags)
+
+    if auto_section in content:
+        content = content.rstrip() + "\n" + new_lines + "\n"
+    else:
+        content = content.rstrip() + f"\n\n{auto_section}\n{new_lines}\n"
+
+    await obsidian_create(path, content)
+    print(f"  Новые теги в глоссарии: {new_tags}")
+
+
+async def update_family_memory(new_people: list[str]) -> None:
+    """Добавляет новых людей в FAMILY_MEMORY.md."""
+    if not new_people:
+        return
+
+    path = "_system/FAMILY_MEMORY.md"
+    content = await obsidian_get(path)
+    if content is None:
+        return
+
+    people_to_add = [p for p in new_people if p not in content]
+    if not people_to_add:
+        return
+
+    new_entries = "\n".join(
+        f"### {person}\n- Упомянут(а) в заметках\n" for person in people_to_add
+    )
+
+    # Ищем секцию друзей (может быть на русском или английском)
+    friends_markers = ["## Friends and acquaintances", "## Друзья и знакомые"]
+    has_friends = any(m in content for m in friends_markers)
+
+    if has_friends:
+        content = content.rstrip() + "\n\n" + new_entries + "\n"
+    else:
+        content = content.rstrip() + "\n\n## Друзья и знакомые\n\n" + new_entries + "\n"
+
+    await obsidian_create(path, content)
+    print(f"  Новые люди в FAMILY_MEMORY: {people_to_add}")
+
+
 # ─── Запись в Obsidian ───────────────────────────────────────────────────────
 
 async def update_diary_authors(path: str, new_author: str) -> None:
@@ -158,25 +296,6 @@ async def update_diary_authors(path: str, new_author: str) -> None:
         post["authors"] = authors
         post["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         await obsidian_create(path, fm.dumps(post))
-
-
-async def write_to_obsidian(llm_output: dict, author_name: str) -> None:
-    """Записывает результат LLM в vault согласно action."""
-    filename = llm_output["filename"]
-    content = llm_output["content"]
-    action = llm_output.get("action", "create")
-
-    if action == "create":
-        await obsidian_create(filename, content)
-        print(f"  Создан файл: {filename}")
-
-    elif action == "append":
-        clean_content = strip_frontmatter(content)
-        await obsidian_append(filename, clean_content)
-        print(f"  Дополнен файл: {filename}")
-
-    if "diary" in filename:
-        await update_diary_authors(filename, author_name)
 
 
 def strip_frontmatter(content: str) -> str:
@@ -212,7 +331,10 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
 
     for s in sessions:
         try:
-            print(f"Записываем сессию {s.id} (intent={s.intent})...")
+            # Неизвестный intent → note
+            intent = s.intent if s.intent != "unknown" else "note"
+
+            print(f"Записываем сессию {s.id} (intent={intent})...")
 
             # Определяем автора
             author_name = resolve_author(s.author_id, context["family_memory"])
@@ -220,27 +342,40 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             # Передаём в LLM
             llm_output = llm_process_session(
                 assembled_content=s.assembled_content,
-                intent=s.intent,
+                intent=intent,
                 author_name=author_name,
                 created_at=s.opened_at,
                 context=context,
             )
 
-            # Парсим JSON ответ
+            # Парсим JSON ответ (новая схема: title вместо filename)
             output_data = json.loads(extract_json(llm_output))
 
-            if "filename" not in output_data:
-                raise ValueError(f"LLM не вернула filename для intent={s.intent}")
+            title = output_data.get("title", "Без заголовка")
+            content = output_data.get("content", "")
+            tags = output_data.get("tags", [])
+            new_people = output_data.get("new_people", [])
+            context_summary = output_data.get("context_summary", "")
 
-            # Python сам определяет action — не доверяем LLM
-            existing = await obsidian_get(output_data["filename"])
+            # Python генерирует имя файла
+            filename = generate_filename(title, intent, s.opened_at)
+
+            # Определяем action: create или append
+            existing = await obsidian_get(filename)
+
             if existing is None:
-                output_data["action"] = "create"
+                await obsidian_create(filename, content)
+                print(f"  Создан файл: {filename}")
             else:
-                output_data["action"] = "append"
+                clean_content = strip_frontmatter(content)
+                await obsidian_append(filename, clean_content)
+                print(f"  Дополнен файл: {filename}")
 
-            await write_to_obsidian(output_data, author_name)
+            # Обновляем authors для дневника
+            if intent == "diary":
+                await update_diary_authors(filename, author_name)
 
+            # Загружаем фото в vault
             photo_messages = await session.execute(
                 select(Message).where(
                     Message.session_id == s.id,
@@ -254,6 +389,11 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                     await obsidian_upload_image(photo_path, photo_msg.photo_filename)
                 else:
                     print(f"  Файл не найден: {photo_path}")
+
+            # ── Обновляем системные файлы (память) ──
+            await update_current_context(context_summary)
+            await update_tags_glossary(tags)
+            await update_family_memory(new_people)
 
             # Обновляем статус сессии
             s.status = "processed"

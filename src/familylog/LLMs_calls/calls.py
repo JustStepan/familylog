@@ -64,32 +64,27 @@ def llm_process_session(
 
     now_str = created_at.strftime("%Y-%m-%d %H:%M") if created_at else "unknown"
 
-    system_prompt = f"""
-You are a family memory assistant writing structured Obsidian notes.
+    system_prompt = f"""{context['agent_config']}
 
-Current datetime: {now_str}
-Author: {author_name}
+---
+Дата и время: {now_str}
+Автор: {author_name}
 
-## Agent Configuration
-{context['agent_config']}
-
-## Family Memory
+## Память о семье
 {context['family_memory']}
 
-## Tags Glossary
+## Глоссарий тегов
 {context['tags_glossary']}
 
-## Current Context (last {settings.CONTEXT_MEMORY_DAYS} days)
+## Текущий контекст (последние {settings.CONTEXT_MEMORY_DAYS} дней)
 {context['current_context']}
-
-Return ONLY valid JSON as specified in Agent Configuration. No markdown fences, no explanation.
 """
 
     response = client.chat.completions.create(
         model=settings.llm_model,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Intent: {intent}\n\nContent:\n{assembled_content}"},
+            {"role": "user", "content": f"Интент: {intent}\n\nСодержание:\n{assembled_content}"},
         ],
         temperature=0.1,
         max_tokens=2000,

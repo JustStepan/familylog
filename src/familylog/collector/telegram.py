@@ -1,5 +1,5 @@
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -68,8 +68,14 @@ async def close_session(session: AsyncSession, db_session: Session) -> None:
 
 
 async def close_all_open_sessions(session: AsyncSession) -> int:
+    """Закрывает сессии, в которых последнее сообщение старше SESSION_TIMEOUT_MINUTES."""
+    cutoff = datetime.now() - timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES)
+
     result = await session.execute(
-        select(Session).where(Session.status == "open")
+        select(Session).where(
+            Session.status == "open",
+            Session.last_message_at < cutoff,
+        )
     )
     open_sessions = result.scalars().all()
 
