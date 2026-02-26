@@ -59,6 +59,7 @@ class Message(Base):
     # file_id для voice и photo
 
     caption: Mapped[Optional[str]] = mapped_column()
+    photo_filename: Mapped[Optional[str]] = mapped_column()
     # подпись к фото если пользователь её добавил
 
     text_content: Mapped[Optional[str]] = mapped_column()

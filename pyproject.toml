@@ -16,6 +16,7 @@ dependencies = [
     "pillow>=12.1.1",
     "pydantic-settings>=2.13.1",
     "python-dotenv>=1.2.1",
+    "python-frontmatter>=1.1.0",
     "python-slugify>=8.0.4",
     "sqlalchemy>=2.0.46",
 ]

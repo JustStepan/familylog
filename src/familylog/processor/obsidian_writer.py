@@ -1,13 +1,14 @@
 import json
-from datetime import datetime, timedelta
 from pathlib import Path
+from datetime import datetime, timedelta
+import frontmatter as fm
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..LLMs_calls.calls import llm_process_session
-from ..storage.models import Session
+from ..storage.models import Session, Message
 from src.config import settings
 
 # ─── Obsidian API ────────────────────────────────────────────────────────────
@@ -47,6 +48,21 @@ async def obsidian_append(path: str, content: str) -> None:
     else:
         await obsidian_create(path, existing + "\n" + content)
 
+
+async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
+    """Загружает изображение в vault/attachments/."""
+    async with httpx.AsyncClient(verify=False, timeout=30) as client:
+        with open(photo_path, "rb") as f:
+            r = await client.put(
+                f"{settings.OBSIDIAN_API_URL}/vault/attachments/{filename}",
+                headers={
+                    "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
+                    "Content-Type": "image/jpeg",
+                },
+                content=f.read(),
+            )
+            r.raise_for_status()
+    print(f"  Загружено фото: {filename}")
 
 # ─── Загрузка системных файлов ───────────────────────────────────────────────
 
@@ -131,7 +147,20 @@ def resolve_author(author_id: int, family_memory: str) -> str:
 
 # ─── Запись в Obsidian ───────────────────────────────────────────────────────
 
-async def write_to_obsidian(llm_output: dict) -> None:
+async def update_diary_authors(path: str, new_author: str) -> None:
+    content = await obsidian_get(path)
+    if not content:
+        return
+    post = fm.loads(content)
+    authors = post.get("authors", [])
+    if new_author not in authors:
+        authors.append(new_author)
+        post["authors"] = authors
+        post["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        await obsidian_create(path, fm.dumps(post))
+
+
+async def write_to_obsidian(llm_output: dict, author_name: str) -> None:
     """Записывает результат LLM в vault согласно action."""
     filename = llm_output["filename"]
     content = llm_output["content"]
@@ -142,8 +171,24 @@ async def write_to_obsidian(llm_output: dict) -> None:
         print(f"  Создан файл: {filename}")
 
     elif action == "append":
-        await obsidian_append(filename, content)
+        clean_content = strip_frontmatter(content)
+        await obsidian_append(filename, clean_content)
         print(f"  Дополнен файл: {filename}")
+
+    if "diary" in filename:
+        await update_diary_authors(filename, author_name)
+
+
+def strip_frontmatter(content: str) -> str:
+    content = content.strip()
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) >= 3:
+            content = parts[2].strip()
+    # Убираем дублирующийся заголовок h1
+    lines = content.split("\n")
+    lines = [l for l in lines if not l.startswith("# ")]
+    return "\n".join(lines).strip()
 
 
 # ─── Основная функция ────────────────────────────────────────────────────────
@@ -184,8 +229,31 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             # Парсим JSON ответ
             output_data = json.loads(extract_json(llm_output))
 
-            # Записываем в Obsidian
-            await write_to_obsidian(output_data)
+            if "filename" not in output_data:
+                raise ValueError(f"LLM не вернула filename для intent={s.intent}")
+
+            # Python сам определяет action — не доверяем LLM
+            existing = await obsidian_get(output_data["filename"])
+            if existing is None:
+                output_data["action"] = "create"
+            else:
+                output_data["action"] = "append"
+
+            await write_to_obsidian(output_data, author_name)
+
+            photo_messages = await session.execute(
+                select(Message).where(
+                    Message.session_id == s.id,
+                    Message.message_type == "photo",
+                    Message.photo_filename.isnot(None),
+                )
+            )
+            for photo_msg in photo_messages.scalars().all():
+                photo_path = Path("media/images") / f"{photo_msg.raw_content}.jpeg"
+                if photo_path.exists():
+                    await obsidian_upload_image(photo_path, photo_msg.photo_filename)
+                else:
+                    print(f"  Файл не найден: {photo_path}")
 
             # Обновляем статус сессии
             s.status = "processed"

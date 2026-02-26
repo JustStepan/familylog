@@ -7,6 +7,7 @@ from src.config import settings
 # Добавь сюда ID всех членов семьи
 FAMILY_CHAT_IDS = [
     987692540,  # Stefan — твой ID из БД
+    6293359903, #  Диана
     # добавь остальных
 ]
 

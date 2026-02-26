@@ -37,7 +37,8 @@ async def assemble_sessions(session: AsyncSession) -> int:
             elif msg.message_type == "voice":
                 parts.append(f"[Аудио]: {text}")
             elif msg.message_type == "photo":
-                parts.append(f"[Фото]: {text}")
+                fn = f" filename={msg.photo_filename}" if msg.photo_filename else ""
+                parts.append(f"[Фото{fn}]: {text}")
 
             msg.status = "assembled" 
 
