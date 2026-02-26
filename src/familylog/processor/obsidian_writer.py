@@ -65,6 +65,21 @@ async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
             r.raise_for_status()
     print(f"  Загружено фото: {filename}")
 
+
+async def obsidian_list_files(folder: str) -> list[str]:
+    """Возвращает список md-файлов в папке vault."""
+    async with httpx.AsyncClient(verify=False) as client:
+        r = await client.get(
+            f"{settings.OBSIDIAN_API_URL}/vault/{folder}/",
+            headers={"Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}"},
+        )
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        data = r.json()
+        return [f["path"] for f in data.get("files", []) if f["path"].endswith(".md")]
+
+
 # ─── Загрузка системных файлов ───────────────────────────────────────────────
 
 async def load_system_file(filename: str) -> str:
@@ -165,7 +180,7 @@ def generate_filename(title: str, intent: str, created_at: datetime) -> str:
     """Генерирует путь файла в Obsidian vault.
 
     Формат: notes/26-фев-26(22:38)_slug.md
-    Дневник: diary/26-фев-26(22:38)_дневник.md
+    Дневник: diary/27-фев-26_дневник.md  (без времени — один файл на день)
     Календарь: calendar/2026-02.md
     Напоминания: reminders/reminders.md
     """
@@ -180,13 +195,15 @@ def generate_filename(title: str, intent: str, created_at: datetime) -> str:
     day = f"{created_at.day:02d}"
     month = RUSSIAN_MONTHS[created_at.month - 1]
     year = f"{created_at.year % 100:02d}"
-    time_str = f"{created_at.hour:02d}:{created_at.minute:02d}"
-    date_part = f"{day}-{month}-{year}({time_str})"
 
     if intent == "diary":
+        # Дневник: без времени — один файл на день, append по дате
+        date_part = f"{day}-{month}-{year}"
         return f"{folder}/{date_part}_дневник.md"
 
-    # note и любой fallback
+    # note и любой fallback — с временем
+    time_str = f"{created_at.hour:02d}:{created_at.minute:02d}"
+    date_part = f"{day}-{month}-{year}({time_str})"
     slug = slugify(title, max_length=50, separator="_")
     if not slug:
         slug = "zametka"
@@ -195,28 +212,37 @@ def generate_filename(title: str, intent: str, created_at: datetime) -> str:
 
 # ─── Обновление системных файлов ──────────────────────────────────────────
 
-async def update_current_context(context_summary: str) -> None:
-    """Добавляет краткое описание записи в CURRENT_CONTEXT.md."""
+async def update_current_context(
+    context_summary: str, filename: str = "", tags: list[str] | None = None
+) -> None:
+    """Добавляет краткое описание записи в CURRENT_CONTEXT.md.
+
+    Формат: - [filename] (теги) Описание...
+    Это позволяет LLM видеть имена файлов и ставить related.
+    """
     if not context_summary:
         return
+
+    # Формируем строку с filename и тегами для LLM
+    tags_str = f" ({', '.join(tags)})" if tags else ""
+    entry = f"[{filename}]{tags_str} {context_summary}" if filename else context_summary
 
     path = "_system/CURRENT_CONTEXT.md"
     content = await obsidian_get(path)
     today_header = f"## {datetime.now().strftime('%Y-%m-%d')}"
 
     if content is None:
-        content = f"# Current Context\n\n{today_header}\n- {context_summary}\n"
+        content = f"# Current Context\n\n{today_header}\n- {entry}\n"
         await obsidian_create(path, content)
         return
 
     if today_header in content:
-        # Сегодня — всегда последняя секция, дописываем в конец
-        content = content.rstrip() + f"\n- {context_summary}\n"
+        content = content.rstrip() + f"\n- {entry}\n"
     else:
-        content = content.rstrip() + f"\n\n{today_header}\n- {context_summary}\n"
+        content = content.rstrip() + f"\n\n{today_header}\n- {entry}\n"
 
     await obsidian_create(path, content)
-    print(f"  Обновлён CURRENT_CONTEXT: {context_summary[:60]}...")
+    print(f"  Обновлён CURRENT_CONTEXT: {entry[:80]}...")
 
 
 async def update_tags_glossary(tags: list[str]) -> None:
@@ -298,6 +324,89 @@ async def update_diary_authors(path: str, new_author: str) -> None:
         await obsidian_create(path, fm.dumps(post))
 
 
+def inject_tags_to_frontmatter(content: str, tags: list[str]) -> str:
+    """Гарантированно вставляет теги в frontmatter через python-frontmatter."""
+    if not tags:
+        return content
+    try:
+        post = fm.loads(content)
+        existing = post.get("tags", []) or []
+        merged = list(dict.fromkeys(existing + tags))  # сохраняем порядок, без дупликатов
+        post["tags"] = merged
+        return fm.dumps(post)
+    except Exception:
+        return content
+
+
+async def find_related_by_tags(
+    tags: list[str], current_filename: str, intent: str
+) -> list[str]:
+    """Ищет заметки с совпадающими тегами в vault.
+
+    Сканирует папки notes/ и diary/, читает frontmatter каждого файла,
+    сравнивает теги. Возвращает до 5 наиболее связанных файлов.
+    """
+    if not tags:
+        return []
+
+    tags_set = set(tags)
+    candidates: list[tuple[str, int]] = []  # (filename, кол-во совпавших тегов)
+
+    # Сканируем notes/ и diary/
+    for folder in ("notes", "diary"):
+        files = await obsidian_list_files(folder)
+        for filepath in files:
+            # Не связываем с самим собой
+            if filepath == current_filename:
+                continue
+            file_content = await obsidian_get(filepath)
+            if not file_content:
+                continue
+            try:
+                post = fm.loads(file_content)
+                file_tags = set(post.get("tags", []) or [])
+                overlap = len(tags_set & file_tags)
+                if overlap > 0:
+                    candidates.append((filepath, overlap))
+            except Exception:
+                continue
+
+    # Сортируем по количеству совпавших тегов, берём top-5
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    return [c[0] for c in candidates[:5]]
+
+
+def inject_related_to_frontmatter(content: str, related: list[str]) -> str:
+    """Вставляет related в frontmatter через python-frontmatter."""
+    if not related:
+        return content
+    try:
+        post = fm.loads(content)
+        existing = post.get("related", []) or []
+        merged = list(dict.fromkeys(existing + related))
+        post["related"] = merged
+        return fm.dumps(post)
+    except Exception:
+        return content
+
+
+async def add_backlinks(related_files: list[str], current_filename: str) -> None:
+    """Добавляет обратную ссылку (backlink) в related файлы."""
+    for filepath in related_files:
+        file_content = await obsidian_get(filepath)
+        if not file_content:
+            continue
+        try:
+            post = fm.loads(file_content)
+            existing = post.get("related", []) or []
+            if current_filename not in existing:
+                existing.append(current_filename)
+                post["related"] = existing
+                await obsidian_create(filepath, fm.dumps(post))
+        except Exception:
+            continue
+
+
 def strip_frontmatter(content: str) -> str:
     content = content.strip()
     if content.startswith("---"):
@@ -357,6 +466,9 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             new_people = output_data.get("new_people", [])
             context_summary = output_data.get("context_summary", "")
 
+            # Python гарантирует теги в frontmatter
+            content = inject_tags_to_frontmatter(content, tags)
+
             # Python генерирует имя файла
             filename = generate_filename(title, intent, s.opened_at)
 
@@ -375,6 +487,18 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             if intent == "diary":
                 await update_diary_authors(filename, author_name)
 
+            # ── Ищем related по тегам и вставляем в frontmatter ──
+            related = await find_related_by_tags(tags, filename, intent)
+            if related:
+                # Читаем свежую версию и вставляем related
+                fresh = await obsidian_get(filename)
+                if fresh:
+                    updated = inject_related_to_frontmatter(fresh, related)
+                    await obsidian_create(filename, updated)
+                # Добавляем backlink в найденные файлы
+                await add_backlinks(related, filename)
+                print(f"  Связано с: {related}")
+
             # Загружаем фото в vault
             photo_messages = await session.execute(
                 select(Message).where(
@@ -391,7 +515,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                     print(f"  Файл не найден: {photo_path}")
 
             # ── Обновляем системные файлы (память) ──
-            await update_current_context(context_summary)
+            await update_current_context(context_summary, filename=filename, tags=tags)
             await update_tags_glossary(tags)
             await update_family_memory(new_people)
 
