@@ -186,8 +186,8 @@ INTENT_FOLDERS = {
 def generate_filename(title: str, intent: str, created_at: datetime) -> str:
     """Генерирует путь файла в Obsidian vault.
 
-    Формат: notes/26-фев-26(22:38)_slug.md
-    Дневник: diary/27-фев-26_дневник.md  (без времени — один файл на день)
+    Формат: notes/Slug_title_27-фев-26.md  (slug с заглавной, время в frontmatter)
+    Дневник: diary/27-фев-26_дневник.md    (без времени — один файл на день)
     Календарь: calendar/2026-02.md
     Напоминания: reminders/reminders.md
     """
@@ -202,19 +202,19 @@ def generate_filename(title: str, intent: str, created_at: datetime) -> str:
     day = f"{created_at.day:02d}"
     month = RUSSIAN_MONTHS[created_at.month - 1]
     year = f"{created_at.year % 100:02d}"
+    date_part = f"{day}-{month}-{year}"
 
     if intent == "diary":
         # Дневник: без времени — один файл на день, append по дате
-        date_part = f"{day}-{month}-{year}"
         return f"{folder}/{date_part}_дневник.md"
 
-    # note и любой fallback — с временем
-    time_str = f"{created_at.hour:02d}:{created_at.minute:02d}"
-    date_part = f"{day}-{month}-{year}({time_str})"
+    # note и любой fallback — slug первым, дата после, время в frontmatter
     slug = slugify(title, max_length=50, separator="_")
     if not slug:
         slug = "zametka"
-    return f"{folder}/{date_part}_{slug}.md"
+    # Первая буква slug с заглавной для читаемости
+    slug_display = slug[0].upper() + slug[1:] if slug else "Zametka"
+    return f"{folder}/{slug_display}_{date_part}.md"
 
 
 # ─── Обновление системных файлов ──────────────────────────────────────────
@@ -511,6 +511,16 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
 
             # Python гарантирует теги в frontmatter
             content = inject_tags_to_frontmatter(content, tags)
+
+            # Добавляем created timestamp в frontmatter (время из имени файла перенесли сюда)
+            try:
+                post = fm.loads(content)
+                created_ts = s.opened_at or datetime.now()
+                if "created" not in post.metadata:
+                    post["created"] = created_ts.strftime("%Y-%m-%d %H:%M")
+                content = fm.dumps(post)
+            except Exception:
+                pass  # Если frontmatter не парсится — пропускаем
 
             # Python генерирует имя файла
             filename = generate_filename(title, intent, s.opened_at)
