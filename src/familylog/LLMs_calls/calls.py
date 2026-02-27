@@ -64,8 +64,16 @@ def llm_process_session(
 
     now_str = created_at.strftime("%Y-%m-%d %H:%M") if created_at else "unknown"
 
-    system_prompt = f"""{context['agent_config']}
+    # Intent-specific правила (если есть)
+    intent_section = ""
+    if context.get("intent_config"):
+        intent_section = f"""
+## Правила для интента: {intent}
+{context['intent_config']}
+"""
 
+    system_prompt = f"""{context['agent_config']}
+{intent_section}
 ---
 Дата и время: {now_str}
 Автор: {author_name}
