@@ -248,6 +248,20 @@ async def collect_messages(session: AsyncSession) -> int:
                 forward_info = f"[Переслано из @{channel.get('username', channel['title'])}]"
                 caption = f"{forward_info}\n{caption}" if caption else forward_info # Если переслано то в заголовке описание поста (обычно так)
 
+        elif "document" in msg:
+            content_type = "document"
+            doc = msg["document"]
+            raw_content = doc["file_id"]
+            text_content = None
+            caption = msg.get("caption")
+
+            # Помечаем пересланные документы
+            forward = msg.get("forward_origin")
+            if forward and forward.get("type") == "channel":
+                channel = forward["chat"]
+                forward_info = f"[Переслано из @{channel.get('username', channel['title'])}]"
+                caption = f"{forward_info}\n{caption}" if caption else forward_info
+
         else:
             await save_last_update_id(session, update_id)
             continue
@@ -271,6 +285,14 @@ async def collect_messages(session: AsyncSession) -> int:
         forward_data = parse_forward(msg)
 
 
+        # Для документов сохраняем метаданные файла
+        doc_filename = None
+        doc_mime_type = None
+        if content_type == "document":
+            doc_info = msg["document"]
+            doc_filename = doc_info.get("file_name", "unknown_file")
+            doc_mime_type = doc_info.get("mime_type", "application/octet-stream")
+
         db_message = Message(
             telegram_message_id=msg["message_id"],
             chat_id=chat_id,
@@ -290,6 +312,8 @@ async def collect_messages(session: AsyncSession) -> int:
             forward_from_name=forward_data.get("forward_from_name"),
             forward_from_username=forward_data.get("forward_from_username"),
             forward_post_url=forward_data.get("forward_post_url"),
+            document_filename=doc_filename,
+            document_mime_type=doc_mime_type,
         )
         session.add(db_message)
         await session.commit()

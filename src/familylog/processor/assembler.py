@@ -45,7 +45,12 @@ async def assemble_sessions(session: AsyncSession) -> int:
                 content = f"{forward_header}\n[Фото{fn}]: {text}{original}" if forward_header else f"[Фото{fn}]: {text}{original}"
                 parts.append(content)
 
-            msg.status = "assembled" 
+            elif msg.message_type == "document":
+                fn = f" filename={msg.document_filename}" if msg.document_filename else ""
+                content = f"{forward_header}\n[Документ{fn}]: {text}" if forward_header else f"[Документ{fn}]: {text}"
+                parts.append(content)
+
+            msg.status = "assembled"
 
         # 5. Обновить сессию
         s.assembled_content = "\n".join(parts)

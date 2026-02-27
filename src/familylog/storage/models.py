@@ -47,7 +47,7 @@ class Message(Base):
     author_username: Mapped[Optional[str]] = mapped_column(String(50))
     author_name: Mapped[str] = mapped_column(String(50))
     message_type: Mapped[str] = mapped_column(String(10))
-    # text / voice / photo
+    # text / voice / photo / document
 
     intent: Mapped[Optional[str]] = mapped_column(String(50))
     # note / diary / calendar / reminder / unknown
@@ -61,6 +61,11 @@ class Message(Base):
     caption: Mapped[Optional[str]] = mapped_column()
     photo_filename: Mapped[Optional[str]] = mapped_column()
     # подпись к фото если пользователь её добавил
+
+    document_filename: Mapped[Optional[str]] = mapped_column(String(255))
+    # оригинальное имя файла из Telegram (e.g., "report.pdf")
+    document_mime_type: Mapped[Optional[str]] = mapped_column(String(100))
+    # MIME тип из Telegram (e.g., "application/pdf", "text/x-python")
 
     # блок для пересланных сообщений
     original_caption: Mapped[Optional[str]] = mapped_column()
