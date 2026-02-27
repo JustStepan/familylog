@@ -77,7 +77,14 @@ async def obsidian_list_files(folder: str) -> list[str]:
             return []
         r.raise_for_status()
         data = r.json()
-        return [f["path"] for f in data.get("files", []) if f["path"].endswith(".md")]
+        files = data.get("files", [])
+        # API возвращает список строк (путей), не словарей
+        result = []
+        for f in files:
+            path = f if isinstance(f, str) else f.get("path", "")
+            if path.endswith(".md"):
+                result.append(path)
+        return result
 
 
 # ─── Загрузка системных файлов ───────────────────────────────────────────────
@@ -255,19 +262,26 @@ async def update_tags_glossary(tags: list[str]) -> None:
     if content is None:
         return
 
-    # Собираем существующие теги
+    # Собираем существующие теги (нормализуем — убираем #)
     existing_tags = set()
     for line in content.split("\n"):
         for word in line.strip().split():
             if word.startswith("#") and not word.startswith("##"):
-                existing_tags.add(word.rstrip("—:,."))
+                existing_tags.add(_normalize_tag(word.rstrip("—:,.")))
 
-    new_tags = [t for t in tags if t not in existing_tags]
+    # Нормализуем входные теги и фильтруем уже существующие
+    new_tags = []
+    for t in tags:
+        normalized = _normalize_tag(t)
+        if normalized and normalized not in existing_tags:
+            new_tags.append(normalized)
+            existing_tags.add(normalized)  # предотвращаем дубли внутри пачки
+
     if not new_tags:
         return
 
     auto_section = "## Автодобавленные"
-    new_lines = "\n".join(f"- {tag}" for tag in new_tags)
+    new_lines = "\n".join(f"- #{tag}" for tag in new_tags)
 
     if auto_section in content:
         content = content.rstrip() + "\n" + new_lines + "\n"
@@ -324,14 +338,27 @@ async def update_diary_authors(path: str, new_author: str) -> None:
         await obsidian_create(path, fm.dumps(post))
 
 
+def _normalize_tag(tag: str) -> str:
+    """Приводит тег к единому формату без # для YAML frontmatter."""
+    return tag.lstrip("#").strip()
+
+
 def inject_tags_to_frontmatter(content: str, tags: list[str]) -> str:
-    """Гарантированно вставляет теги в frontmatter через python-frontmatter."""
+    """Гарантированно вставляет теги в frontmatter через python-frontmatter.
+
+    Нормализует теги: убирает # (в YAML frontmatter Obsidian теги без #),
+    дедуплицирует, отбрасывает пустые.
+    """
     if not tags:
         return content
     try:
         post = fm.loads(content)
         existing = post.get("tags", []) or []
-        merged = list(dict.fromkeys(existing + tags))  # сохраняем порядок, без дупликатов
+        # Нормализуем: убираем # из обоих списков, фильтруем None/пустые
+        all_tags = [_normalize_tag(t) for t in existing if t] + \
+                   [_normalize_tag(t) for t in tags if t]
+        # Дедупликация с сохранением порядка, отбрасываем пустые
+        merged = list(dict.fromkeys(t for t in all_tags if t))
         post["tags"] = merged
         return fm.dumps(post)
     except Exception:
@@ -349,7 +376,8 @@ async def find_related_by_tags(
     if not tags:
         return []
 
-    tags_set = set(tags)
+    # Нормализуем входные теги (убираем #) для корректного сравнения
+    tags_set = set(_normalize_tag(t) for t in tags if t)
     candidates: list[tuple[str, int]] = []  # (filename, кол-во совпавших тегов)
 
     # Сканируем notes/ и diary/
@@ -364,7 +392,8 @@ async def find_related_by_tags(
                 continue
             try:
                 post = fm.loads(file_content)
-                file_tags = set(post.get("tags", []) or [])
+                raw_tags = post.get("tags", []) or []
+                file_tags = set(_normalize_tag(t) for t in raw_tags if t)
                 overlap = len(tags_set & file_tags)
                 if overlap > 0:
                     candidates.append((filepath, overlap))
@@ -488,16 +517,19 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 await update_diary_authors(filename, author_name)
 
             # ── Ищем related по тегам и вставляем в frontmatter ──
-            related = await find_related_by_tags(tags, filename, intent)
-            if related:
-                # Читаем свежую версию и вставляем related
-                fresh = await obsidian_get(filename)
-                if fresh:
-                    updated = inject_related_to_frontmatter(fresh, related)
-                    await obsidian_create(filename, updated)
-                # Добавляем backlink в найденные файлы
-                await add_backlinks(related, filename)
-                print(f"  Связано с: {related}")
+            try:
+                related = await find_related_by_tags(tags, filename, intent)
+                if related:
+                    # Читаем свежую версию и вставляем related
+                    fresh = await obsidian_get(filename)
+                    if fresh:
+                        updated = inject_related_to_frontmatter(fresh, related)
+                        await obsidian_create(filename, updated)
+                    # Добавляем backlink в найденные файлы
+                    await add_backlinks(related, filename)
+                    print(f"  Связано с: {related}")
+            except Exception as e:
+                print(f"  Ошибка поиска related (не критично): {e}")
 
             # Загружаем фото в vault
             photo_messages = await session.execute(
