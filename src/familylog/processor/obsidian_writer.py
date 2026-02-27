@@ -51,11 +51,11 @@ async def obsidian_append(path: str, content: str) -> None:
 
 
 async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
-    """Загружает изображение в vault/attachments/."""
+    """Загружает изображение в vault/attachments/photos/."""
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         with open(photo_path, "rb") as f:
             r = await client.put(
-                f"{settings.OBSIDIAN_API_URL}/vault/attachments/{filename}",
+                f"{settings.OBSIDIAN_API_URL}/vault/attachments/photos/{filename}",
                 headers={
                     "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
                     "Content-Type": "image/jpeg",
@@ -63,11 +63,12 @@ async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    print(f"  Загружено фото: {filename}")
+    print(f"  Загружено фото: attachments/photos/{filename}")
 
 
 MIME_MAP = {
     ".pdf": "application/pdf",
+    ".epub": "application/epub+zip",
     ".py": "text/x-python",
     ".txt": "text/plain",
     ".json": "application/json",
@@ -81,14 +82,14 @@ MIME_MAP = {
 
 
 async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
-    """Загружает документ в vault/attachments/."""
+    """Загружает документ в vault/attachments/documents/."""
     suffix = Path(filename).suffix.lower()
     content_type = MIME_MAP.get(suffix, "application/octet-stream")
 
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         with open(doc_path, "rb") as f:
             r = await client.put(
-                f"{settings.OBSIDIAN_API_URL}/vault/attachments/{filename}",
+                f"{settings.OBSIDIAN_API_URL}/vault/attachments/documents/{filename}",
                 headers={
                     "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
                     "Content-Type": content_type,
@@ -96,7 +97,7 @@ async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    print(f"  Загружен документ: {filename}")
+    print(f"  Загружен документ: attachments/documents/{filename}")
 
 
 async def obsidian_list_files(folder: str) -> list[str]:
@@ -447,6 +448,25 @@ def _normalize_tag(tag: str) -> str:
     return tag.lstrip("#").strip()
 
 
+def generate_person_tag(name: str) -> str:
+    """Генерирует тег из имени человека.
+
+    'Василий Иванович Полеостровский' → 'В_И_Полеостровский'
+    'Пётр Иванович' → 'Пётр_Иванович'
+    'Степан' → 'Степан'
+    """
+    parts = name.strip().split()
+    if len(parts) >= 3:
+        # Имя Отчество Фамилия → И_О_Фамилия
+        return f"{parts[0][0]}_{parts[1][0]}_{parts[2]}"
+    elif len(parts) == 2:
+        # Имя Фамилия → Имя_Фамилия
+        return f"{parts[0]}_{parts[1]}"
+    elif parts:
+        return parts[0]
+    return ""
+
+
 def inject_tags_to_frontmatter(content: str, tags: list[str]) -> str:
     """Гарантированно вставляет теги в frontmatter через python-frontmatter.
 
@@ -478,16 +498,21 @@ async def find_related_by_tags(
     сравнивает теги. Возвращает до 5 наиболее связанных файлов.
     """
     if not tags:
+        print(f"  [related] Нет тегов для поиска related")
         return []
 
     # Нормализуем входные теги (убираем #) для корректного сравнения
     tags_set = set(_normalize_tag(t) for t in tags if t)
+    print(f"  [related] Ищем related для {current_filename}, теги: {tags_set}")
     candidates: list[tuple[str, int]] = []  # (filename, кол-во совпавших тегов)
 
     # Сканируем notes/ и diary/
+    total_files = 0
     for folder in ("notes", "diary"):
         files = await obsidian_list_files(folder)
+        print(f"  [related] Папка {folder}/: найдено {len(files)} файлов")
         for filepath in files:
+            total_files += 1
             # Не связываем с самим собой
             if filepath == current_filename:
                 continue
@@ -500,23 +525,52 @@ async def find_related_by_tags(
                 file_tags = set(_normalize_tag(t) for t in raw_tags if t)
                 overlap = len(tags_set & file_tags)
                 if overlap > 0:
+                    shared = tags_set & file_tags
+                    print(f"  [related] {filepath}: совпадение {overlap} ({shared})")
                     candidates.append((filepath, overlap))
             except Exception:
                 continue
+
+    print(f"  [related] Итого: {total_files} файлов, {len(candidates)} кандидатов")
 
     # Сортируем по количеству совпавших тегов, берём top-5
     candidates.sort(key=lambda x: x[1], reverse=True)
     return [c[0] for c in candidates[:5]]
 
 
+def _to_wikilink(path: str) -> str:
+    """Конвертирует путь файла в формат wiki-link Obsidian: [[path/without/.md]]."""
+    if path.startswith("[["):
+        return path  # Уже wiki-link
+    clean = path.removesuffix(".md")
+    return f"[[{clean}]]"
+
+
+def _from_wikilink(link: str) -> str:
+    """Извлекает путь файла из wiki-link формата."""
+    if isinstance(link, str) and link.startswith("[[") and link.endswith("]]"):
+        return link[2:-2]
+    return str(link)
+
+
 def inject_related_to_frontmatter(content: str, related: list[str]) -> str:
-    """Вставляет related в frontmatter через python-frontmatter."""
+    """Вставляет related в frontmatter как [[wiki-links]] для Obsidian графа."""
     if not related:
         return content
     try:
         post = fm.loads(content)
         existing = post.get("related", []) or []
-        merged = list(dict.fromkeys(existing + related))
+        # Конвертируем всё в wiki-link формат
+        all_links = [_to_wikilink(r) for r in existing if r] + \
+                    [_to_wikilink(r) for r in related if r]
+        # Дедупликация по нормализованному пути
+        seen = set()
+        merged = []
+        for link in all_links:
+            key = _from_wikilink(link)
+            if key not in seen:
+                seen.add(key)
+                merged.append(link)
         post["related"] = merged
         return fm.dumps(post)
     except Exception:
@@ -536,7 +590,10 @@ async def validate_related_files(related: list[str]) -> list[str]:
 
 
 async def add_backlinks(related_files: list[str], current_filename: str) -> None:
-    """Добавляет обратную ссылку (backlink) в related файлы."""
+    """Добавляет обратную ссылку (backlink) как [[wiki-link]] в related файлы."""
+    current_link = _to_wikilink(current_filename)
+    current_normalized = _from_wikilink(current_link)
+
     for filepath in related_files:
         file_content = await obsidian_get(filepath)
         if not file_content:
@@ -544,12 +601,43 @@ async def add_backlinks(related_files: list[str], current_filename: str) -> None
         try:
             post = fm.loads(file_content)
             existing = post.get("related", []) or []
-            if current_filename not in existing:
-                existing.append(current_filename)
+            # Проверяем оба формата: plain path и wiki-link
+            existing_normalized = {_from_wikilink(e) for e in existing}
+            if current_normalized not in existing_normalized:
+                existing.append(current_link)
                 post["related"] = existing
                 await obsidian_create(filepath, fm.dumps(post))
         except Exception:
             continue
+
+
+def fix_document_references(content: str, doc_filenames: list[str]) -> str:
+    """Исправляет ссылки на документы в контенте — гарантирует точное имя файла.
+
+    LLM может исказить имя файла (заменить пробелы на _ и т.д.).
+    Эта функция находит и исправляет такие ссылки.
+    """
+    if not doc_filenames:
+        return content
+
+    for fn in doc_filenames:
+        # Вариант с подчёркиваниями вместо пробелов (частая ошибка LLM)
+        mangled = fn.replace(" ", "_").replace(",", "").replace(",", "")
+        # Вариант без запятых
+        no_comma = fn.replace(",", "")
+
+        # Если LLM использовал искажённое имя — заменяем на правильное
+        if mangled != fn and mangled in content:
+            content = content.replace(mangled, fn)
+        if no_comma != fn and no_comma in content:
+            content = content.replace(no_comma, fn)
+
+        # Если ссылка на документ вообще отсутствует — добавляем в конец
+        if fn not in content:
+            content = content.rstrip() + f"\n\n![[attachments/documents/{fn}]]\n"
+            print(f"  [doc-fix] Добавлена ссылка на {fn}")
+
+    return content
 
 
 def strip_frontmatter(content: str) -> str:
@@ -615,8 +703,21 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             title = output_data.get("title", "Без заголовка")
             content = output_data.get("content", "")
             tags = output_data.get("tags", [])
+            people_mentioned = output_data.get("people_mentioned", [])
             new_people = output_data.get("new_people", [])
             context_summary = output_data.get("context_summary", "")
+
+            # Генерируем теги из имён упомянутых людей (кроме автора)
+            for person in people_mentioned:
+                if person and person != author_name:
+                    ptag = generate_person_tag(person)
+                    if ptag:
+                        tags.append(ptag)
+            for person in new_people:
+                if person:
+                    ptag = generate_person_tag(person)
+                    if ptag:
+                        tags.append(ptag)
 
             # Python гарантирует теги в frontmatter
             content = inject_tags_to_frontmatter(content, tags)
@@ -630,6 +731,21 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 content = fm.dumps(post)
             except Exception:
                 pass  # Если frontmatter не парсится — пропускаем
+
+            # ── Собираем имена документов для post-processing ──
+            doc_messages_result = await session.execute(
+                select(Message).where(
+                    Message.session_id == s.id,
+                    Message.message_type == "document",
+                    Message.document_filename.isnot(None),
+                )
+            )
+            doc_msgs = doc_messages_result.scalars().all()
+            doc_filenames = [m.document_filename for m in doc_msgs if m.document_filename]
+
+            # Исправляем ссылки на документы (LLM может исказить имена файлов)
+            if doc_filenames:
+                content = fix_document_references(content, doc_filenames)
 
             # Python генерирует имя файла
             filename = generate_filename(title, intent, s.opened_at)
@@ -670,15 +786,26 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 if all_related:
                     all_related = await validate_related_files(all_related)
 
+                # Всегда обновляем related в frontmatter (даже если пустой — для консистентности)
+                fresh = await obsidian_get(filename)
+                if fresh:
+                    updated = inject_related_to_frontmatter(fresh, all_related) if all_related else fresh
+                    # Гарантируем наличие поля related (даже пустого)
+                    try:
+                        post = fm.loads(updated)
+                        if "related" not in post.metadata:
+                            post["related"] = []
+                        updated = fm.dumps(post)
+                    except Exception:
+                        pass
+                    await obsidian_create(filename, updated)
+
                 if all_related:
-                    # Читаем свежую версию и вставляем related
-                    fresh = await obsidian_get(filename)
-                    if fresh:
-                        updated = inject_related_to_frontmatter(fresh, all_related)
-                        await obsidian_create(filename, updated)
                     # Добавляем backlink в найденные файлы
                     await add_backlinks(all_related, filename)
                     print(f"  Связано с: {all_related}")
+                else:
+                    print(f"  Related: не найдено совпадений")
             except Exception as e:
                 print(f"  Ошибка поиска related (не критично): {e}")
 
@@ -698,14 +825,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                     print(f"  Фото не найдено: {photo_path}")
 
             # Загружаем документы в vault
-            doc_messages = await session.execute(
-                select(Message).where(
-                    Message.session_id == s.id,
-                    Message.message_type == "document",
-                    Message.document_filename.isnot(None),
-                )
-            )
-            for doc_msg in doc_messages.scalars().all():
+            for doc_msg in doc_msgs:
                 ext = Path(doc_msg.document_filename).suffix.lstrip(".") or "bin"
                 doc_path = Path("media/documents") / f"{doc_msg.raw_content}.{ext}"
                 if doc_path.exists():
