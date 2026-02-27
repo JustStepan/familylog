@@ -421,6 +421,18 @@ def inject_related_to_frontmatter(content: str, related: list[str]) -> str:
         return content
 
 
+async def validate_related_files(related: list[str]) -> list[str]:
+    """Проверяет что файлы из related существуют в vault. Отбрасывает несуществующие."""
+    valid = []
+    for filepath in related:
+        if not filepath or not filepath.endswith(".md"):
+            continue
+        content = await obsidian_get(filepath)
+        if content is not None:
+            valid.append(filepath)
+    return valid
+
+
 async def add_backlinks(related_files: list[str], current_filename: str) -> None:
     """Добавляет обратную ссылку (backlink) в related файлы."""
     for filepath in related_files:
@@ -524,18 +536,30 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             if intent == "diary":
                 await update_diary_authors(filename, author_name)
 
-            # ── Ищем related по тегам и вставляем в frontmatter ──
+            # ── Ищем related: LLM-предложения + совпадение по тегам ──
             try:
-                related = await find_related_by_tags(tags, filename, intent)
-                if related:
+                # LLM может вернуть related из CURRENT_CONTEXT
+                llm_related = output_data.get("related", [])
+
+                # Поиск по совпадению тегов в vault
+                tag_related = await find_related_by_tags(tags, filename, intent)
+
+                # Объединяем оба источника, дедупликация, max 5
+                all_related = list(dict.fromkeys(llm_related + tag_related))[:5]
+
+                # Валидируем: оставляем только существующие файлы
+                if all_related:
+                    all_related = await validate_related_files(all_related)
+
+                if all_related:
                     # Читаем свежую версию и вставляем related
                     fresh = await obsidian_get(filename)
                     if fresh:
-                        updated = inject_related_to_frontmatter(fresh, related)
+                        updated = inject_related_to_frontmatter(fresh, all_related)
                         await obsidian_create(filename, updated)
                     # Добавляем backlink в найденные файлы
-                    await add_backlinks(related, filename)
-                    print(f"  Связано с: {related}")
+                    await add_backlinks(all_related, filename)
+                    print(f"  Связано с: {all_related}")
             except Exception as e:
                 print(f"  Ошибка поиска related (не критично): {e}")
 
