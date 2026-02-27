@@ -66,6 +66,39 @@ async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
     print(f"  Загружено фото: {filename}")
 
 
+MIME_MAP = {
+    ".pdf": "application/pdf",
+    ".py": "text/x-python",
+    ".txt": "text/plain",
+    ".json": "application/json",
+    ".csv": "text/csv",
+    ".md": "text/markdown",
+    ".html": "text/html",
+    ".xml": "application/xml",
+    ".zip": "application/zip",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
+    """Загружает документ в vault/attachments/."""
+    suffix = Path(filename).suffix.lower()
+    content_type = MIME_MAP.get(suffix, "application/octet-stream")
+
+    async with httpx.AsyncClient(verify=False, timeout=30) as client:
+        with open(doc_path, "rb") as f:
+            r = await client.put(
+                f"{settings.OBSIDIAN_API_URL}/vault/attachments/{filename}",
+                headers={
+                    "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
+                    "Content-Type": content_type,
+                },
+                content=f.read(),
+            )
+            r.raise_for_status()
+    print(f"  Загружен документ: {filename}")
+
+
 async def obsidian_list_files(folder: str) -> list[str]:
     """Возвращает список md-файлов в папке vault."""
     async with httpx.AsyncClient(verify=False) as client:
@@ -544,7 +577,23 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 if photo_path.exists():
                     await obsidian_upload_image(photo_path, photo_msg.photo_filename)
                 else:
-                    print(f"  Файл не найден: {photo_path}")
+                    print(f"  Фото не найдено: {photo_path}")
+
+            # Загружаем документы в vault
+            doc_messages = await session.execute(
+                select(Message).where(
+                    Message.session_id == s.id,
+                    Message.message_type == "document",
+                    Message.document_filename.isnot(None),
+                )
+            )
+            for doc_msg in doc_messages.scalars().all():
+                ext = Path(doc_msg.document_filename).suffix.lstrip(".") or "bin"
+                doc_path = Path("media/documents") / f"{doc_msg.raw_content}.{ext}"
+                if doc_path.exists():
+                    await obsidian_upload_document(doc_path, doc_msg.document_filename)
+                else:
+                    print(f"  Документ не найден: {doc_path}")
 
             # ── Обновляем системные файлы (память) ──
             await update_current_context(context_summary, filename=filename, tags=tags)

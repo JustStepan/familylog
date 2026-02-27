@@ -6,6 +6,7 @@ from src.familylog.processor.obsidian_writer import process_assembled_sessions
 from src.familylog.storage.database import init_db, AsyncSessionLocal
 from src.familylog.processor.stt import process_voice_messages
 from src.familylog.processor.vision import process_photo_messages
+from src.familylog.processor.documents import process_document_messages
 from src.config import settings
 
 
@@ -44,6 +45,10 @@ async def main():
 
         photo_count = await process_photo_messages(session)
         print(f"{'*' * 50}\nОбработано фото: {photo_count}")
+
+        # ── 3b. Документы ──────────────────────────────────────────────────
+        doc_count = await process_document_messages(session)
+        print(f"{'*' * 50}\nОбработано документов: {doc_count}")
 
         # ── 4. Загружаем LLM (выгружаем vision если была загружена) ─────────
         if settings.CONNECTION_TYPE == "offline":
