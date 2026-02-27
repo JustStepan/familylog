@@ -132,8 +132,8 @@ def parse_current_context(content: str) -> str:
     return "\n".join(result) if result else "(no recent context)"
 
 
-async def load_context() -> dict[str, str]:
-    """Загружает все системные файлы для передачи в LLM."""
+async def load_base_context() -> dict[str, str]:
+    """Загружает общие системные файлы (без intent-specific)."""
     agent_config = await load_system_file("AGENT_CONFIG.md")
     family_memory = await load_system_file("FAMILY_MEMORY.md")
     tags_glossary = await load_system_file("TAGS_GLOSSARY.md")
@@ -146,6 +146,16 @@ async def load_context() -> dict[str, str]:
         "tags_glossary": tags_glossary,
         "current_context": current_context,
     }
+
+
+async def load_context(intent: str = "note") -> dict[str, str]:
+    """Загружает все системные файлы + intent-specific правила."""
+    base = await load_base_context()
+    # Загружаем intent-specific правила (если файл не найден — пустая строка)
+    intent_config = await load_system_file(f"intents/{intent}.md")
+    if "(file not found)" in intent_config:
+        intent_config = ""
+    return {**base, "intent_config": intent_config}
 
 
 # ─── Определение автора ──────────────────────────────────────────────────────
@@ -290,6 +300,65 @@ async def update_tags_glossary(tags: list[str]) -> None:
 
     await obsidian_create(path, content)
     print(f"  Новые теги в глоссарии: {new_tags}")
+
+
+async def update_user_interests(author_name: str, interests: list[str]) -> None:
+    """Обновляет интересы пользователя в FAMILY_MEMORY.md.
+
+    Ищет блок ### {author_name}, находит строку '- Интересы:',
+    сливает новые с существующими (max 10).
+    """
+    if not interests:
+        return
+
+    path = "_system/FAMILY_MEMORY.md"
+    content = await obsidian_get(path)
+    if content is None:
+        return
+
+    # Ищем блок автора
+    marker = f"### {author_name}"
+    if marker not in content:
+        return
+
+    # Парсим существующие интересы
+    lines = content.split("\n")
+    interests_line_idx = None
+    existing_interests: list[str] = []
+
+    in_author_block = False
+    for i, line in enumerate(lines):
+        if line.strip() == marker:
+            in_author_block = True
+            continue
+        if in_author_block:
+            if line.startswith("### ") or line.startswith("## "):
+                break  # Вышли из блока автора
+            if line.strip().startswith("- Интересы:"):
+                interests_line_idx = i
+                raw = line.split(":", 1)[1].strip()
+                existing_interests = [x.strip() for x in raw.split(",") if x.strip()]
+                break
+
+    # Сливаем новые с существующими (дедупликация, max 10)
+    merged = list(dict.fromkeys(existing_interests + interests))[:10]
+    if set(merged) == set(existing_interests):
+        return  # Нечего обновлять
+
+    interests_str = ", ".join(merged)
+    new_line = f"- Интересы: {interests_str}"
+
+    if interests_line_idx is not None:
+        lines[interests_line_idx] = new_line
+    else:
+        # Нет строки интересов — добавляем после маркера автора
+        for i, line in enumerate(lines):
+            if line.strip() == marker:
+                lines.insert(i + 1, new_line)
+                break
+
+    await obsidian_create(path, "\n".join(lines))
+    print(f"  Обновлены интересы {author_name}: {interests_str}")
 
 
 async def update_family_memory(new_people: list[str]) -> None:
@@ -462,8 +531,9 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
     if not sessions:
         return 0
 
-    # Загружаем системные файлы один раз для всех сессий
-    context = await load_context()
+    # Загружаем базовый контекст один раз, intent-specific кешируем
+    base_context = await load_base_context()
+    intent_cache: dict[str, str] = {}
 
     processed_count = 0
 
@@ -471,6 +541,12 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
         try:
             # Неизвестный intent → note
             intent = s.intent if s.intent != "unknown" else "note"
+
+            # Загружаем intent-specific правила (с кешем)
+            if intent not in intent_cache:
+                intent_config = await load_system_file(f"intents/{intent}.md")
+                intent_cache[intent] = "" if "(file not found)" in intent_config else intent_config
+            context = {**base_context, "intent_config": intent_cache[intent]}
 
             print(f"Записываем сессию {s.id} (intent={intent})...")
 
@@ -550,6 +626,11 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             await update_current_context(context_summary, filename=filename, tags=tags)
             await update_tags_glossary(tags)
             await update_family_memory(new_people)
+
+            # Обновляем интересы пользователя
+            user_interests = output_data.get("user_interests", [])
+            if user_interests:
+                await update_user_interests(author_name, user_interests)
 
             # Обновляем статус сессии
             s.status = "processed"
