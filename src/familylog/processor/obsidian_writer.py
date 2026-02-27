@@ -326,6 +326,7 @@ async def update_family_memory(new_people: list[str]) -> None:
 # ─── Запись в Obsidian ───────────────────────────────────────────────────────
 
 async def update_diary_authors(path: str, new_author: str) -> None:
+    """Обновляет authors и updated в frontmatter дневника."""
     content = await obsidian_get(path)
     if not content:
         return
@@ -334,8 +335,9 @@ async def update_diary_authors(path: str, new_author: str) -> None:
     if new_author not in authors:
         authors.append(new_author)
         post["authors"] = authors
-        post["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-        await obsidian_create(path, fm.dumps(post))
+    # Всегда обновляем timestamp при любом append
+    post["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    await obsidian_create(path, fm.dumps(post))
 
 
 def _normalize_tag(tag: str) -> str:
@@ -477,12 +479,12 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             # Определяем автора
             author_name = resolve_author(s.author_id, context["family_memory"])
 
-            # Передаём в LLM
+            # Передаём в LLM (last_message_at — реальное время записи, не время открытия сессии)
             llm_output = llm_process_session(
                 assembled_content=s.assembled_content,
                 intent=intent,
                 author_name=author_name,
-                created_at=s.opened_at,
+                created_at=s.last_message_at or s.opened_at,
                 context=context,
             )
 
@@ -510,6 +512,12 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             else:
                 clean_content = strip_frontmatter(content)
                 await obsidian_append(filename, clean_content)
+                # Сливаем новые теги в существующий frontmatter
+                if tags:
+                    fresh = await obsidian_get(filename)
+                    if fresh:
+                        updated_content = inject_tags_to_frontmatter(fresh, tags)
+                        await obsidian_create(filename, updated_content)
                 print(f"  Дополнен файл: {filename}")
 
             # Обновляем authors для дневника
