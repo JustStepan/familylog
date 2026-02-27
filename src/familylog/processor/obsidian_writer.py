@@ -51,11 +51,11 @@ async def obsidian_append(path: str, content: str) -> None:
 
 
 async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
-    """Загружает изображение в vault/attachments/."""
+    """Загружает изображение в vault/attachments/photos/."""
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         with open(photo_path, "rb") as f:
             r = await client.put(
-                f"{settings.OBSIDIAN_API_URL}/vault/attachments/{filename}",
+                f"{settings.OBSIDIAN_API_URL}/vault/attachments/photos/{filename}",
                 headers={
                     "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
                     "Content-Type": "image/jpeg",
@@ -63,7 +63,7 @@ async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    print(f"  Загружено фото: {filename}")
+    print(f"  Загружено фото: attachments/photos/{filename}")
 
 
 MIME_MAP = {
@@ -81,14 +81,14 @@ MIME_MAP = {
 
 
 async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
-    """Загружает документ в vault/attachments/."""
+    """Загружает документ в vault/attachments/documents/."""
     suffix = Path(filename).suffix.lower()
     content_type = MIME_MAP.get(suffix, "application/octet-stream")
 
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         with open(doc_path, "rb") as f:
             r = await client.put(
-                f"{settings.OBSIDIAN_API_URL}/vault/attachments/{filename}",
+                f"{settings.OBSIDIAN_API_URL}/vault/attachments/documents/{filename}",
                 headers={
                     "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
                     "Content-Type": content_type,
@@ -96,7 +96,7 @@ async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    print(f"  Загружен документ: {filename}")
+    print(f"  Загружен документ: attachments/documents/{filename}")
 
 
 async def obsidian_list_files(folder: str) -> list[str]:
@@ -447,6 +447,25 @@ def _normalize_tag(tag: str) -> str:
     return tag.lstrip("#").strip()
 
 
+def generate_person_tag(name: str) -> str:
+    """Генерирует тег из имени человека.
+
+    'Василий Иванович Полеостровский' → 'В_И_Полеостровский'
+    'Пётр Иванович' → 'Пётр_Иванович'
+    'Степан' → 'Степан'
+    """
+    parts = name.strip().split()
+    if len(parts) >= 3:
+        # Имя Отчество Фамилия → И_О_Фамилия
+        return f"{parts[0][0]}_{parts[1][0]}_{parts[2]}"
+    elif len(parts) == 2:
+        # Имя Фамилия → Имя_Фамилия
+        return f"{parts[0]}_{parts[1]}"
+    elif parts:
+        return parts[0]
+    return ""
+
+
 def inject_tags_to_frontmatter(content: str, tags: list[str]) -> str:
     """Гарантированно вставляет теги в frontmatter через python-frontmatter.
 
@@ -478,16 +497,21 @@ async def find_related_by_tags(
     сравнивает теги. Возвращает до 5 наиболее связанных файлов.
     """
     if not tags:
+        print(f"  [related] Нет тегов для поиска related")
         return []
 
     # Нормализуем входные теги (убираем #) для корректного сравнения
     tags_set = set(_normalize_tag(t) for t in tags if t)
+    print(f"  [related] Ищем related для {current_filename}, теги: {tags_set}")
     candidates: list[tuple[str, int]] = []  # (filename, кол-во совпавших тегов)
 
     # Сканируем notes/ и diary/
+    total_files = 0
     for folder in ("notes", "diary"):
         files = await obsidian_list_files(folder)
+        print(f"  [related] Папка {folder}/: найдено {len(files)} файлов")
         for filepath in files:
+            total_files += 1
             # Не связываем с самим собой
             if filepath == current_filename:
                 continue
@@ -500,9 +524,13 @@ async def find_related_by_tags(
                 file_tags = set(_normalize_tag(t) for t in raw_tags if t)
                 overlap = len(tags_set & file_tags)
                 if overlap > 0:
+                    shared = tags_set & file_tags
+                    print(f"  [related] {filepath}: совпадение {overlap} ({shared})")
                     candidates.append((filepath, overlap))
             except Exception:
                 continue
+
+    print(f"  [related] Итого: {total_files} файлов, {len(candidates)} кандидатов")
 
     # Сортируем по количеству совпавших тегов, берём top-5
     candidates.sort(key=lambda x: x[1], reverse=True)
@@ -615,8 +643,21 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             title = output_data.get("title", "Без заголовка")
             content = output_data.get("content", "")
             tags = output_data.get("tags", [])
+            people_mentioned = output_data.get("people_mentioned", [])
             new_people = output_data.get("new_people", [])
             context_summary = output_data.get("context_summary", "")
+
+            # Генерируем теги из имён упомянутых людей (кроме автора)
+            for person in people_mentioned:
+                if person and person != author_name:
+                    ptag = generate_person_tag(person)
+                    if ptag:
+                        tags.append(ptag)
+            for person in new_people:
+                if person:
+                    ptag = generate_person_tag(person)
+                    if ptag:
+                        tags.append(ptag)
 
             # Python гарантирует теги в frontmatter
             content = inject_tags_to_frontmatter(content, tags)

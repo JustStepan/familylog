@@ -249,18 +249,28 @@ async def collect_messages(session: AsyncSession) -> int:
                 caption = f"{forward_info}\n{caption}" if caption else forward_info # Если переслано то в заголовке описание поста (обычно так)
 
         elif "document" in msg:
-            content_type = "document"
             doc = msg["document"]
-            raw_content = doc["file_id"]
-            text_content = None
-            caption = msg.get("caption")
+            mime = doc.get("mime_type", "")
 
-            # Помечаем пересланные документы
-            forward = msg.get("forward_origin")
-            if forward and forward.get("type") == "channel":
-                channel = forward["chat"]
-                forward_info = f"[Переслано из @{channel.get('username', channel['title'])}]"
-                caption = f"{forward_info}\n{caption}" if caption else forward_info
+            # Аудиофайлы (mp3, ogg, wav и пр.) → через STT, не как документы
+            if mime.startswith("audio/"):
+                content_type = "voice"
+                raw_content = doc["file_id"]
+                text_content = None
+                caption = None
+                print(f"DEBUG: аудио-документ ({mime}) → перенаправлен в voice pipeline")
+            else:
+                content_type = "document"
+                raw_content = doc["file_id"]
+                text_content = None
+                caption = msg.get("caption")
+
+                # Помечаем пересланные документы
+                forward = msg.get("forward_origin")
+                if forward and forward.get("type") == "channel":
+                    channel = forward["chat"]
+                    forward_info = f"[Переслано из @{channel.get('username', channel['title'])}]"
+                    caption = f"{forward_info}\n{caption}" if caption else forward_info
 
         else:
             await save_last_update_id(session, update_id)
