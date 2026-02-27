@@ -44,7 +44,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
                 }
             ],
             temperature=0.1,
-            max_tokens=300,
+            max_tokens=500,
         )
         return response.choices[0].message.content
 
@@ -95,7 +95,59 @@ def llm_process_session(
             {"role": "user", "content": f"Интент: {intent}\n\nСодержание:\n{assembled_content}"},
         ],
         temperature=0.1,
-        max_tokens=2000,
+        max_tokens=5000,
+    )
+
+    return response.choices[0].message.content
+
+
+def llm_generate_summary(
+    vault_content: str,
+    since: "datetime | None" = None,
+) -> str:
+    """Генерирует периодический summary по записям из vault."""
+    from datetime import datetime as _dt
+
+    client = get_client()
+    period = f"с {since.strftime('%d.%m.%Y')}" if since else "за всё время"
+    now_str = _dt.now().strftime("%Y-%m-%d %H:%M")
+
+    system_prompt = f"""Ты — семейный ассистент. Тебе переданы записи из семейного Obsidian vault {period}.
+
+Создай структурированный summary. Отвечай ТОЛЬКО валидным JSON:
+
+{{
+  "summary_text": "Краткий текст для Telegram (3-5 предложений, без markdown)",
+  "content": "Полный markdown файл для Obsidian (с frontmatter)"
+}}
+
+## Правила для summary_text (Telegram)
+- 3-5 предложений, чистый текст без markdown
+- Главные события, выполненные задания, планы
+- Дружелюбный тон, как семейный помощник
+
+## Правила для content (Obsidian файл)
+- Frontmatter: tags (summary), created, period_start, period_end
+- Секции:
+  ### Заметки — краткий обзор тем заметок
+  ### Дневник — основные события из дневника
+  ### Календарь — предстоящие и прошедшие события
+  ### Задания — выполненные и невыполненные задания
+  ### Статистика — количество записей по категориям
+- Если какой-то секции нет (нет записей) — пропусти её
+- Не придумывай то, чего нет в данных
+
+Дата: {now_str}
+"""
+
+    response = client.chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": vault_content},
+        ],
+        temperature=0.1,
+        max_tokens=5000,
     )
 
     return response.choices[0].message.content
