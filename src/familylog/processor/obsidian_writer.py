@@ -764,6 +764,9 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             if doc_filenames:
                 content = fix_document_references(content, doc_filenames)
 
+            # Исправляем формат embed-ссылок (![alt]([[path]]) → ![[path]])
+            content = fix_obsidian_embeds(content)
+
             # Python генерирует имя файла
             filename = generate_filename(title, intent, s.opened_at)
 
@@ -874,11 +877,33 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
     return processed_count
 
 
+def fix_obsidian_embeds(content: str) -> str:
+    """Исправляет формат embed-ссылок: LLM часто генерирует неправильный формат.
+
+    ![alt]([[path]]) → ![[path]]
+    ![alt](attachments/...) → ![[attachments/...]]
+    """
+    import re
+    # ![alt]([[path]]) → ![[path]]
+    content = re.sub(r'!\[([^\]]*)\]\(\[\[([^\]]+)\]\]\)', r'![[\2]]', content)
+    # ![alt](attachments/...) → ![[attachments/...]]
+    content = re.sub(r'!\[([^\]]*)\]\((attachments/[^)]+)\)', r'![[\2]]', content)
+    return content
+
+
 def extract_json(raw: str) -> str:
-    """Извлекает JSON из ответа reasoning модели."""
+    """Извлекает JSON из ответа reasoning модели (qwen3.5, deepseek и пр.)."""
+    import re
     # Убираем служебный префикс reasoning моделей
     if "<|message|>" in raw:
         raw = raw.split("<|message|>")[-1]
+    # Убираем <think>...</think> блоки (qwen3.5 reasoning chain)
+    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+    # Если <think> без закрывающего тега — отрезаем всё до первого {
+    if "<think>" in raw:
+        idx = raw.find("{")
+        if idx >= 0:
+            raw = raw[idx:]
     # Убираем markdown code fences если есть
     raw = raw.strip().strip("```json").strip("```").strip()
     return raw
