@@ -223,25 +223,42 @@ INTENT_FOLDERS = {
     "note": "notes",
     "diary": "diary",
     "calendar": "calendar",
-    "reminder": "reminders",
+    "task": "tasks",
 }
+
+
+def get_monday_of_week(dt: datetime) -> datetime:
+    """Возвращает понедельник недели, содержащей dt."""
+    return dt - timedelta(days=dt.weekday())
 
 
 def generate_filename(title: str, intent: str, created_at: datetime) -> str:
     """Генерирует путь файла в Obsidian vault.
 
-    Формат: notes/Slug_title_27-фев-26.md  (slug с заглавной, время в frontmatter)
-    Дневник: diary/27-фев-26_дневник.md    (без времени — один файл на день)
-    Календарь: calendar/2026-02.md
-    Напоминания: reminders/reminders.md
+    Формат:
+      notes/Slug_title_27-фев-26.md      (slug с заглавной, время в frontmatter)
+      diary/27-фев-26_дневник.md          (один файл на день, append)
+      calendar/Slug_27-фев-26.md          (отдельный файл на событие)
+      tasks/неделя_24-фев-26.md           (один файл на неделю, дата = понедельник)
     """
     folder = INTENT_FOLDERS.get(intent, "notes")
 
+    # Календарь: отдельный файл на каждое событие (как notes)
     if intent == "calendar":
-        return f"{folder}/{created_at.strftime('%Y-%m')}.md"
+        slug = slugify(title, max_length=50, separator="_")
+        slug_display = (slug[0].upper() + slug[1:]) if slug else "Sobytie"
+        day = f"{created_at.day:02d}"
+        month = RUSSIAN_MONTHS[created_at.month - 1]
+        year = f"{created_at.year % 100:02d}"
+        return f"{folder}/{slug_display}_{day}-{month}-{year}.md"
 
-    if intent == "reminder":
-        return f"{folder}/reminders.md"
+    # Задания: один файл на неделю (дата = понедельник)
+    if intent == "task":
+        monday = get_monday_of_week(created_at)
+        day = f"{monday.day:02d}"
+        month = RUSSIAN_MONTHS[monday.month - 1]
+        year = f"{monday.year % 100:02d}"
+        return f"{folder}/неделя_{day}-{month}-{year}.md"
 
     day = f"{created_at.day:02d}"
     month = RUSSIAN_MONTHS[created_at.month - 1]
@@ -506,9 +523,9 @@ async def find_related_by_tags(
     print(f"  [related] Ищем related для {current_filename}, теги: {tags_set}")
     candidates: list[tuple[str, int]] = []  # (filename, кол-во совпавших тегов)
 
-    # Сканируем notes/ и diary/
+    # Сканируем все папки с заметками
     total_files = 0
-    for folder in ("notes", "diary"):
+    for folder in ("notes", "diary", "calendar", "tasks"):
         files = await obsidian_list_files(folder)
         print(f"  [related] Папка {folder}/: найдено {len(files)} файлов")
         for filepath in files:

@@ -23,7 +23,7 @@ async def main():
             ],
             [
                 KeyboardButton(text="📅 календарь"),
-                KeyboardButton(text="⏰ напоминание"),
+                KeyboardButton(text="✅ задание"),
             ],
         ],
         resize_keyboard=True,  # компактный размер
