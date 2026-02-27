@@ -50,7 +50,7 @@ class Message(Base):
     # text / voice / photo / document
 
     intent: Mapped[Optional[str]] = mapped_column(String(50))
-    # note / diary / calendar / reminder / unknown
+    # note / diary / calendar / task / unknown
 
     session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sessions.id"))
     # NULL пока сессия не закрыта и не собрана

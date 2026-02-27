@@ -10,7 +10,7 @@ INTENT_MARKERS = {
     "📝 заметка": "note",
     "📔 дневник": "diary",
     "📅 календарь": "calendar",
-    "⏰ напоминание": "reminder",
+    "✅ задание": "task",
 }
 
 TG_API = f"https://api.telegram.org/bot{settings.BOT_TOKEN}"
