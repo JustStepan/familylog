@@ -1,4 +1,5 @@
 import base64
+import logging
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,6 +11,8 @@ from ..schema.llm import PhotoOutput
 from ..LLMs_calls.calls import llm_process_photo
 from ..storage.models import Message
 from ..storage.telegram_files import download_file
+
+logger = logging.getLogger(__name__)
 
 
 MEDIA_DIR = Path("media/images")
@@ -50,7 +53,7 @@ async def process_photo_messages(session: AsyncSession) -> int:
         photo_caption = msg.caption or None
 
         try:
-            print(f"Обрабатываем фото сообщение {msg.id}...")
+            logger.info("Обрабатываем фото сообщение %d...", msg.id)
 
             # Скачиваем файл
             photo_path = await download_file(msg.raw_content, MEDIA_DIR, "jpeg")
@@ -66,14 +69,14 @@ async def process_photo_messages(session: AsyncSession) -> int:
             msg.original_caption = msg.caption # сохраняем до перезаписи
             msg.caption = output.caption  # обновляем заголовок
             msg.text_content = f"Заголовок: {output.caption}. Описание: {output.description}"
-            print(f"  Описание LLM: {msg.text_content[:100]}...")
+            logger.info("Описание LLM: %s...", msg.text_content[:100])
             msg.status = "described"
             await session.commit()
 
             processed_count += 1
 
         except Exception as e:
-            print(f"  Ошибка: {e}")
+            logger.error("Ошибка vision: %s", e)
             msg.status = "error_img"
             await session.commit()
 

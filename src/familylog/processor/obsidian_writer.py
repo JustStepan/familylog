@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 import frontmatter as fm
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..LLMs_calls.calls import llm_process_session
 from ..storage.models import Session, Message
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 # ─── Obsidian API ────────────────────────────────────────────────────────────
 
@@ -63,7 +66,7 @@ async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    print(f"  Загружено фото: attachments/photos/{filename}")
+    logger.info("Загружено фото: attachments/photos/%s", filename)
 
 
 MIME_MAP = {
@@ -97,7 +100,7 @@ async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    print(f"  Загружен документ: attachments/documents/{filename}")
+    logger.info("Загружен документ: attachments/documents/%s", filename)
 
 
 async def obsidian_list_files(folder: str) -> list[str]:
@@ -196,12 +199,6 @@ async def load_context(intent: str = "note") -> dict[str, str]:
 
 def resolve_author(author_id: int, family_memory: str) -> str:
     """Ищет имя автора в FAMILY_MEMORY по Telegram ID."""
-    for line in family_memory.split("\n"):
-        if str(author_id) in line:
-            # Ищём имя в строках выше — заголовок ### Имя
-            pass
-
-    # Простой парсинг: ищем блок с нужным telegram_id
     blocks = family_memory.split("### ")
     for block in blocks:
         if str(author_id) in block:
@@ -310,7 +307,7 @@ async def update_current_context(
         content = content.rstrip() + f"\n\n{today_header}\n- {entry}\n"
 
     await obsidian_create(path, content)
-    print(f"  Обновлён CURRENT_CONTEXT: {entry[:80]}...")
+    logger.info("Обновлён CURRENT_CONTEXT: %s...", entry[:80])
 
 
 async def update_tags_glossary(tags: list[str]) -> None:
@@ -350,7 +347,7 @@ async def update_tags_glossary(tags: list[str]) -> None:
         content = content.rstrip() + f"\n\n{auto_section}\n{new_lines}\n"
 
     await obsidian_create(path, content)
-    print(f"  Новые теги в глоссарии: {new_tags}")
+    logger.info("Новые теги в глоссарии: %s", new_tags)
 
 
 async def update_user_interests(author_name: str, interests: list[str]) -> None:
@@ -409,7 +406,7 @@ async def update_user_interests(author_name: str, interests: list[str]) -> None:
                 break
 
     await obsidian_create(path, "\n".join(lines))
-    print(f"  Обновлены интересы {author_name}: {interests_str}")
+    logger.info("Обновлены интересы %s: %s", author_name, interests_str)
 
 
 async def update_family_memory(new_people: list[str]) -> None:
@@ -440,7 +437,7 @@ async def update_family_memory(new_people: list[str]) -> None:
         content = content.rstrip() + "\n\n## Друзья и знакомые\n\n" + new_entries + "\n"
 
     await obsidian_create(path, content)
-    print(f"  Новые люди в FAMILY_MEMORY: {people_to_add}")
+    logger.info("Новые люди в FAMILY_MEMORY: %s", people_to_add)
 
 
 # ─── Запись в Obsidian ───────────────────────────────────────────────────────
@@ -515,19 +512,19 @@ async def find_related_by_tags(
     сравнивает теги. Возвращает до 5 наиболее связанных файлов.
     """
     if not tags:
-        print(f"  [related] Нет тегов для поиска related")
+        logger.debug("Нет тегов для поиска related")
         return []
 
     # Нормализуем входные теги (убираем #) для корректного сравнения
     tags_set = set(_normalize_tag(t) for t in tags if t)
-    print(f"  [related] Ищем related для {current_filename}, теги: {tags_set}")
+    logger.debug("Ищем related для %s, теги: %s", current_filename, tags_set)
     candidates: list[tuple[str, int]] = []  # (filename, кол-во совпавших тегов)
 
     # Сканируем все папки с заметками
     total_files = 0
     for folder in ("notes", "diary", "calendar", "tasks"):
         files = await obsidian_list_files(folder)
-        print(f"  [related] Папка {folder}/: найдено {len(files)} файлов")
+        logger.debug("Папка %s/: найдено %d файлов", folder, len(files))
         for filepath in files:
             total_files += 1
             # Не связываем с самим собой
@@ -543,12 +540,12 @@ async def find_related_by_tags(
                 overlap = len(tags_set & file_tags)
                 if overlap > 0:
                     shared = tags_set & file_tags
-                    print(f"  [related] {filepath}: совпадение {overlap} ({shared})")
+                    logger.debug("Related: %s совпадение %d (%s)", filepath, overlap, shared)
                     candidates.append((filepath, overlap))
             except Exception:
                 continue
 
-    print(f"  [related] Итого: {total_files} файлов, {len(candidates)} кандидатов")
+    logger.debug("Related итого: %d файлов, %d кандидатов", total_files, len(candidates))
 
     # Сортируем по количеству совпавших тегов, берём top-5
     candidates.sort(key=lambda x: x[1], reverse=True)
@@ -652,7 +649,7 @@ def fix_document_references(content: str, doc_filenames: list[str]) -> str:
         # Если ссылка на документ вообще отсутствует — добавляем в конец
         if fn not in content:
             content = content.rstrip() + f"\n\n![[attachments/documents/{fn}]]\n"
-            print(f"  [doc-fix] Добавлена ссылка на {fn}")
+            logger.info("Добавлена ссылка на документ: %s", fn)
 
     return content
 
@@ -700,7 +697,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 intent_cache[intent] = "" if "(file not found)" in intent_config else intent_config
             context = {**base_context, "intent_config": intent_cache[intent]}
 
-            print(f"Записываем сессию {s.id} (intent={intent})...")
+            logger.info("Записываем сессию %d (intent=%s)...", s.id, intent)
 
             # Определяем автора
             author_name = resolve_author(s.author_id, context["family_memory"])
@@ -775,7 +772,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
 
             if existing is None:
                 await obsidian_create(filename, content)
-                print(f"  Создан файл: {filename}")
+                logger.info("Создан файл: %s", filename)
             else:
                 clean_content = strip_frontmatter(content)
                 await obsidian_append(filename, clean_content)
@@ -785,7 +782,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                     if fresh:
                         updated_content = inject_tags_to_frontmatter(fresh, tags)
                         await obsidian_create(filename, updated_content)
-                print(f"  Дополнен файл: {filename}")
+                logger.info("Дополнен файл: %s", filename)
 
             # Обновляем authors для дневника
             if intent == "diary":
@@ -823,11 +820,11 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 if all_related:
                     # Добавляем backlink в найденные файлы
                     await add_backlinks(all_related, filename)
-                    print(f"  Связано с: {all_related}")
+                    logger.info("Связано с: %s", all_related)
                 else:
-                    print(f"  Related: не найдено совпадений")
+                    logger.debug("Related: не найдено совпадений")
             except Exception as e:
-                print(f"  Ошибка поиска related (не критично): {e}")
+                logger.warning("Ошибка поиска related: %s", e)
 
             # Загружаем фото в vault
             photo_messages = await session.execute(
@@ -842,7 +839,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 if photo_path.exists():
                     await obsidian_upload_image(photo_path, photo_msg.photo_filename)
                 else:
-                    print(f"  Фото не найдено: {photo_path}")
+                    logger.warning("Фото не найдено: %s", photo_path)
 
             # Загружаем документы в vault
             for doc_msg in doc_msgs:
@@ -851,7 +848,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 if doc_path.exists():
                     await obsidian_upload_document(doc_path, doc_msg.document_filename)
                 else:
-                    print(f"  Документ не найден: {doc_path}")
+                    logger.warning("Документ не найден: %s", doc_path)
 
             # ── Обновляем системные файлы (память) ──
             await update_current_context(context_summary, filename=filename, tags=tags)
@@ -870,7 +867,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             processed_count += 1
 
         except Exception as e:
-            print(f"  Ошибка сессии {s.id}: {e}")
+            logger.error("Ошибка сессии %d: %s", s.id, e)
             s.status = "error_obsidian"
             await session.commit()
 

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from sqlalchemy import select
@@ -5,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..storage.models import Message
 from ..storage.telegram_files import download_file
+
+logger = logging.getLogger(__name__)
 
 MEDIA_DIR = Path("media/documents")
 
@@ -33,7 +36,7 @@ async def process_document_messages(session: AsyncSession) -> int:
             original_name = msg.document_filename or "unknown_file"
             extension = Path(original_name).suffix.lstrip(".") or "bin"
 
-            print(f"Обрабатываем документ {msg.id}: {original_name}...")
+            logger.info("Обрабатываем документ %d: %s...", msg.id, original_name)
 
             # Скачиваем файл из Telegram
             file_path = await download_file(msg.raw_content, MEDIA_DIR, extension)
@@ -50,10 +53,10 @@ async def process_document_messages(session: AsyncSession) -> int:
             await session.commit()
 
             processed_count += 1
-            print(f"  Скачан: {file_path}")
+            logger.info("Скачан: %s", file_path)
 
         except Exception as e:
-            print(f"  Ошибка документа {msg.id}: {e}")
+            logger.error("Ошибка документа %d: %s", msg.id, e)
             msg.status = "error_doc"
             await session.commit()
 

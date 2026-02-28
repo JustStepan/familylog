@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,6 +7,8 @@ from sqlalchemy import select
 
 from ..storage.models import Message, Setting, Session
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 INTENT_MARKERS = {
     "📝 заметка": "note",
@@ -206,13 +210,13 @@ async def collect_messages(session: AsyncSession) -> int:
             # Блок обработки сервисных сообщений и работы с сессиями
             if is_service_message(text):
                 intent = parse_intent(text)
-                print(f"DEBUG: маркер '{text}' → intent='{intent}'")
+                logger.debug("Маркер '%s' → intent='%s'", text, intent)
 
                 # Закрываем предыдущую открытую сессию этого автора
                 existing = await get_open_session(session, author_id)
                 if existing:
                     await close_session(session, existing)
-                    print(f"DEBUG: закрыта сессия id={existing.id}")
+                    logger.debug("Закрыта сессия id=%d", existing.id)
 
                 # Открываем новую сессию
                 await open_session(session, author_id, chat_id, intent, msg_timestamp)
@@ -258,7 +262,7 @@ async def collect_messages(session: AsyncSession) -> int:
                 raw_content = doc["file_id"]
                 text_content = None
                 caption = None
-                print(f"DEBUG: аудио-документ ({mime}) → перенаправлен в voice pipeline")
+                logger.debug("Аудио-документ (%s) → voice pipeline", mime)
             else:
                 content_type = "document"
                 raw_content = doc["file_id"]
@@ -283,7 +287,7 @@ async def collect_messages(session: AsyncSession) -> int:
         if current_session is None:
             # Нет открытой сессии — берём последний известный intent
             last_intent = await get_setting(session, f"last_intent_{author_id}") or "unknown"
-            print(f"DEBUG: нет открытой сессии, используем last_intent='{last_intent}'")
+            logger.debug("Нет открытой сессии, используем last_intent='%s'", last_intent)
             current_session = await open_session(
                 session, author_id, chat_id, last_intent, msg_timestamp
             )
@@ -329,7 +333,7 @@ async def collect_messages(session: AsyncSession) -> int:
         await session.commit()
 
         saved_count += 1
-        print(f"DEBUG: сохранено {content_type} → session_id={current_session.id}, intent={current_session.intent}")
+        logger.debug("Сохранено %s → session_id=%d, intent=%s", content_type, current_session.id, current_session.intent)
 
         await save_last_update_id(session, update_id)
 

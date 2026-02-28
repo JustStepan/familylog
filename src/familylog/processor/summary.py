@@ -6,7 +6,10 @@
 """
 
 import json
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 import frontmatter as fm
 
@@ -154,9 +157,9 @@ async def generate_summary(since: datetime | None) -> dict:
     total_entries = sum(len(v) for v in vault_data.values())
     period_str = f"с {since.strftime('%d.%m.%Y')}" if since else "за всё время"
 
-    print(f"  Собрано {total_entries} записей {period_str}")
+    logger.info("Собрано %d записей %s", total_entries, period_str)
     for folder, entries in vault_data.items():
-        print(f"    {folder}: {len(entries)}")
+        logger.info("  %s: %d", folder, len(entries))
 
     # Форматируем для LLM
     llm_input = format_content_for_llm(vault_data, since)
@@ -189,9 +192,9 @@ async def run_summary() -> dict:
     # Определяем период
     since = await get_last_summary_time()
     if since:
-        print(f"Последний summary: {since.strftime('%Y-%m-%d %H:%M')}")
+        logger.info("Последний summary: %s", since.strftime('%Y-%m-%d %H:%M'))
     else:
-        print("Первый запуск summary — собираем всё")
+        logger.info("Первый запуск summary — собираем всё")
 
     # Генерируем summary
     result = await generate_summary(since)
@@ -199,7 +202,7 @@ async def run_summary() -> dict:
     # Сохраняем в vault
     if result["filename"] and result["content"]:
         await obsidian_create(result["filename"], result["content"])
-        print(f"  Сохранён: {result['filename']}")
+        logger.info("Сохранён: %s", result['filename'])
 
     # Обновляем время последнего запуска
     await save_last_summary_time(now)

@@ -12,7 +12,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
 
     try:
         response = client.chat.completions.create(
-            model='qwen/qwen3-vl-8b', # qwen3.5-35b-a3b qwen/qwen3-vl-8b glm-4.6v-flash
+            model=settings.vision_model,
             messages=[
                 {
                     "role": "system",

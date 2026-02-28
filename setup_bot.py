@@ -1,20 +1,21 @@
 import asyncio
+import logging
+
 from aiogram import Bot
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from src.config import settings
 
-# Список chat_id пользователей которым отправить клавиатуру
-# Добавь сюда ID всех членов семьи
-FAMILY_CHAT_IDS = [
-    987692540,  # Stefan — твой ID из БД
-    6293359903, #  Диана
-    # добавь остальных
-]
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 
 async def main():
     bot = Bot(token=settings.BOT_TOKEN)
-    
-    # Reply keyboard — всегда видна внизу экрана
+
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -26,18 +27,18 @@ async def main():
                 KeyboardButton(text="✅ задание"),
             ],
         ],
-        resize_keyboard=True,   # компактный размер
-        is_persistent=True,        # не скрывается после нажатия
+        resize_keyboard=True,
+        is_persistent=True,
     )
-    
-    for chat_id in FAMILY_CHAT_IDS:
+
+    for chat_id in settings.FAMILY_CHAT_IDS:
         await bot.send_message(
             chat_id=chat_id,
             text="FamilyLog готов! Выбери тип записи:",
             reply_markup=keyboard,
         )
-        print(f"Клавиатура отправлена: {chat_id}")
-    
+        logger.info("Клавиатура отправлена: %d", chat_id)
+
     await bot.session.close()
 
 if __name__ == "__main__":
