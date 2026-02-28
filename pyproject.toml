@@ -9,6 +9,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "greenlet>=3.3.2",
     "httpx>=0.28.1",
+    "loguru>=0.7.3",
     "onnx-asr>=0.10.2",
     "onnxruntime>=1.24.2",
     "openai>=2.24.0",

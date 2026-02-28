@@ -1,0 +1,4 @@
+2026-02-28 20:06:06.149 | INFO     | __main__:<module>:3 - dd
+2026-02-28 20:06:16.333 | ERROR    | __main__:<module>:3 - dd
+2026-02-28 20:06:38.849 | DEBUG    | __main__:<module>:3 - dd
+2026-02-28 20:06:40.640 | DEBUG    | __main__:<module>:3 - dd

@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from src.logger import logger
 from ..storage.models import Message, Setting, Session
 from src.config import settings
 
-logger = logging.getLogger(__name__)
 
 INTENT_MARKERS = {
     "📝 заметка": "note",
@@ -23,7 +23,7 @@ TG_API = f"https://api.telegram.org/bot{settings.BOT_TOKEN}"
 # ─── Вспомогательные функции ────────────────────────────────────────────────
 
 async def get_setting(session: AsyncSession, key: str) -> str | None:
-    """Читает произвольное значение из таблицы Settings по ключу."""
+    """Читает значение из таблицы Settings по ключу."""
     result = await session.execute(
         select(Setting).where(Setting.key == key)
     )
@@ -32,7 +32,7 @@ async def get_setting(session: AsyncSession, key: str) -> str | None:
 
 
 async def save_setting(session: AsyncSession, key: str, value: str) -> None:
-    """Сохраняет произвольное значение в таблицу Settings."""
+    """Сохраняет значение в таблицу Settings."""
     result = await session.execute(
         select(Setting).where(Setting.key == key)
     )
@@ -40,13 +40,16 @@ async def save_setting(session: AsyncSession, key: str, value: str) -> None:
 
     if setting:
         setting.value = value
+        logger.info(f'Таблица settings обновлена параметры: {setting.key} = {setting.value}')
     else:
         session.add(Setting(key=key, value=value))
-
+        logger.info(f'В таблице settings создана новая запись: {key} = {value}')
     await session.commit()
 
 
 async def get_last_update_id(session: AsyncSession) -> int:
+    """Получаем id последнего сообщения в чате
+    Нужно для передачи в телегу для извлечения только новых сообщений"""
     value = await get_setting(session, "last_update_id")
     return int(value) if value else 0
 
@@ -89,7 +92,7 @@ async def close_all_open_sessions(session: AsyncSession) -> int:
 
     if open_sessions:
         await session.commit()
-
+    logger.info(f'Закрыто {len(open_sessions)} сессий старше {settings.SESSION_TIMEOUT_MINUTES} минут')
     return len(open_sessions)
 
 
@@ -98,7 +101,7 @@ def is_service_message(text: str) -> bool:
 
 
 def parse_intent(text: str) -> str:
-    return INTENT_MARKERS.get(text.strip().lower(), "unknown")
+    return INTENT_MARKERS.get(text.strip().lower(), "unknown") # по идее unknown быть не может никогда поскольку маркеры проверяются здесь is_service_message() и условие проверки точно такое же.
 
 
 async def fetch_updates(offset: int) -> list[dict]:
@@ -107,11 +110,12 @@ async def fetch_updates(offset: int) -> list[dict]:
             f"{TG_API}/getUpdates",
             params={"offset": offset + 1, "limit": 200, "timeout": 10},
         )
+        logger.info(f'Пробуем достать данные из телеграма Параметры offset = {offset} - это значение id последнего сообщения в чате.')
         data = response.json()
 
         if not data["ok"]:
             raise Exception(f"Telegram API error: {data}")
-
+        logger.info(f'Данные от телеграма получены = \n {data}')
         return data["result"]
 
 
@@ -182,6 +186,7 @@ async def collect_messages(session: AsyncSession) -> int:
       (или "unknown" если маркеров ещё не было)
     """
     last_update_id = await get_last_update_id(session)
+    logger.info(f' Последний обновленный id в таблице settings = {last_update_id}')
     updates = await fetch_updates(last_update_id)
 
     if not updates:

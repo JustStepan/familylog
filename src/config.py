@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     VISION_MODEL_ONLINE: str = "qwen/qwen-vl-plus"
 
     # LLM
-    LLM_MODEL_OFFLINE: str = "openai/gpt-oss-20b"
+    LLM_MODEL_OFFLINE: str = "qwen/qwen3-8b"
     LLM_MODEL_ONLINE: str = "anthropic/claude-3-haiku"
 
     # API endpoints
