@@ -1,6 +1,13 @@
 import asyncio
+import logging
 
 from src.familylog.collector.telegram import collect_messages, close_all_open_sessions
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 from src.familylog.processor.assembler import assemble_sessions
 from src.familylog.processor.obsidian_writer import process_assembled_sessions
 from src.familylog.storage.database import init_db, AsyncSessionLocal

@@ -15,6 +15,7 @@
 
 import sys
 import asyncio
+import logging
 
 from aiogram import Bot
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
@@ -22,11 +23,12 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from src.config import settings
 from src.familylog.processor.summary import run_summary
 
-# Список chat_id пользователей
-FAMILY_CHAT_IDS = [
-    987692540,   # Степан
-    6293359903,  # Диана
-]
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -47,40 +49,38 @@ KEYBOARD = ReplyKeyboardMarkup(
 async def main():
     dry_run = "--dry-run" in sys.argv
 
-    print("=" * 60)
-    print("FamilyLog Summary")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("FamilyLog Summary")
+    logger.info("=" * 60)
 
-    # Генерируем summary
     result = await run_summary()
 
     summary_text = result["summary_text"]
-    print(f"\n--- Summary ---\n{summary_text}\n--- end ---\n")
+    logger.info("--- Summary ---\n%s\n--- end ---", summary_text)
 
     if dry_run:
-        print("(dry-run: Telegram отправка пропущена)")
+        logger.info("(dry-run: Telegram отправка пропущена)")
         return
 
     if not summary_text:
-        print("Нет текста для отправки.")
+        logger.info("Нет текста для отправки.")
         return
 
-    # Отправляем в Telegram
     bot = Bot(token=settings.BOT_TOKEN)
 
-    for chat_id in FAMILY_CHAT_IDS:
+    for chat_id in settings.FAMILY_CHAT_IDS:
         try:
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"📊 Сводка FamilyLog\n\n{summary_text}",
+                text=f"Сводка FamilyLog\n\n{summary_text}",
                 reply_markup=KEYBOARD,
             )
-            print(f"Отправлено: {chat_id}")
+            logger.info("Отправлено: %d", chat_id)
         except Exception as e:
-            print(f"Ошибка отправки {chat_id}: {e}")
+            logger.error("Ошибка отправки %d: %s", chat_id, e)
 
     await bot.session.close()
-    print("\nГотово!")
+    logger.info("Готово!")
 
 
 if __name__ == "__main__":

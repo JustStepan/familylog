@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     CONTEXT_MEMORY_DAYS: int = 90
     SESSION_TIMEOUT_MINUTES: int = 30
 
+    # Telegram — chat_id всех членов семьи
+    FAMILY_CHAT_IDS: list[int] = [987692540, 6293359903]
+
     # Obsidian
     OBSIDIAN_VAULT_PATH: str
     OBSIDIAN_API_KEY: str

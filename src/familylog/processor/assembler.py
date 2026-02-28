@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..storage.models import Session, Message
+
+logger = logging.getLogger(__name__)
 
 
 async def assemble_sessions(session: AsyncSession) -> int:
@@ -10,7 +14,7 @@ async def assemble_sessions(session: AsyncSession) -> int:
     )
 
     sessions = result.scalars().all()
-    print(f"DEBUG assembler: найдено сессий ready = {len(sessions)}")
+    logger.debug("Найдено сессий ready = %d", len(sessions))
 
     processed_count = 0
     for s in sessions:
