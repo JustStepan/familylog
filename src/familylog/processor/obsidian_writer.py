@@ -104,7 +104,11 @@ async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
 
 
 async def obsidian_list_files(folder: str) -> list[str]:
-    """Возвращает список md-файлов в папке vault."""
+    """Возвращает список md-файлов в папке vault (полные пути от корня vault).
+
+    Obsidian Local REST API возвращает имена файлов без префикса папки,
+    поэтому мы добавляем folder/ к каждому пути.
+    """
     async with httpx.AsyncClient(verify=False) as client:
         r = await client.get(
             f"{settings.OBSIDIAN_API_URL}/vault/{folder}/",
@@ -115,11 +119,13 @@ async def obsidian_list_files(folder: str) -> list[str]:
         r.raise_for_status()
         data = r.json()
         files = data.get("files", [])
-        # API возвращает список строк (путей), не словарей
         result = []
-        for f in files:
-            path = f if isinstance(f, str) else f.get("path", "")
+        for item in files:
+            path = item if isinstance(item, str) else item.get("path", "")
             if path.endswith(".md"):
+                # API возвращает имена без папки — добавляем prefix
+                if not path.startswith(f"{folder}/"):
+                    path = f"{folder}/{path}"
                 result.append(path)
         return result
 
