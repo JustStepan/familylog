@@ -19,6 +19,7 @@ wheels/
 _local_*
 stt_models/
 media*
+logs*
 
 # сасhes
 .mypy_cache
