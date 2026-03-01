@@ -32,19 +32,19 @@ class Settings(BaseSettings):
     #
     # STT_MODEL_PATH — папка куда скачивается модель (uv run download_models.py)
     # Должна совпадать с именем модели для наглядности.
-    STT_MODEL_OFFLINE: str = "gigaam-v3-e2e-rnnt"
-    STT_MODEL_PATH: str = f"{BASE_DIR}/stt_models/gigaam-v3-e2e-rnnt/"
+    STT_MODEL_OFFLINE: str = "nemo-conformer-tdt" # nemo-conformer-tdt gigaam-v3-e2e-rnnt
+    STT_MODEL_PATH: str = f"{BASE_DIR}/stt_models/parakeet-tdt-0.6b-v3-int8/" # parakeet-tdt-0.6b-v3-int8 gigaam-v3-e2e-rnnt
 
     # Онлайн STT — мультимодальный LLM через OpenRouter
     # Используется когда CONNECTION_TYPE="online"
     STT_MODEL_ONLINE: str = "google/gemini-2.5-flash"
 
     # Vision
-    VISION_MODEL_OFFLINE: str = "qwen/qwen3-vl-8b"
+    VISION_MODEL_OFFLINE: str = "glm-ocr"
     VISION_MODEL_ONLINE: str = "qwen/qwen-vl-plus"
 
     # LLM
-    LLM_MODEL_OFFLINE: str = "qwen/qwen3-8b"
+    LLM_MODEL_OFFLINE: str = "ibm/granite-4-h-tiny" # mistralai/ministral-3-3b ibm/granite-4-h-tiny
     LLM_MODEL_ONLINE: str = "anthropic/claude-3-haiku"
 
     # API endpoints

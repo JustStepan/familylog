@@ -141,6 +141,8 @@ async def open_session(
     )
     db.add(new_session)
     await db.flush()
+    logger.debug(f'Новая сессия пользователя {author_id} создана с intent {intent}.')
+
     return new_session
 
 
@@ -157,6 +159,7 @@ def parse_forward(msg: dict) -> dict:
         username = chat.get("username")
         msg_id = origin.get("message_id")
         url = f"https://t.me/{username}/{msg_id}" if username and msg_id else None
+        logger.debug(f'Получены пересланные сообщения из ЧАТА: {chat}, ПОЛЬЗОВАТЕЛЬ: {username}, ЗАГОЛОВОК: {chat.get("title")}')
         return {
             "is_forwarded": True,
             "forward_from_name": chat.get("title"),
@@ -167,6 +170,7 @@ def parse_forward(msg: dict) -> dict:
     elif origin["type"] == "user":
         user = origin["sender_user"]
         name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+        logger.debug(f'Получены пересланные сообщения от ПОЛЬЗОВАТЕЛЯ: {user}, ЗАГОЛОВОК: {origin.get("title")}')
         return {
             "is_forwarded": True,
             "forward_from_name": name,
@@ -186,7 +190,7 @@ async def collect_messages(session: AsyncSession) -> int:
       (или "unknown" если маркеров ещё не было)
     """
     last_update_id = await get_last_update_id(session)
-    logger.info(f' Последний обновленный id в таблице settings = {last_update_id}')
+    logger.info(f'id последнего добавленного сообщения в таблице settings = {last_update_id}')
     updates = await fetch_updates(last_update_id)
 
     if not updates:
@@ -215,13 +219,13 @@ async def collect_messages(session: AsyncSession) -> int:
             # Блок обработки сервисных сообщений и работы с сессиями
             if is_service_message(text):
                 intent = parse_intent(text)
-                logger.debug("Маркер '%s' → intent='%s'", text, intent)
+                logger.debug(f"Маркер '{text}' → intent='{intent}'")
 
                 # Закрываем предыдущую открытую сессию этого автора
                 existing = await get_open_session(session, author_id)
                 if existing:
                     await close_session(session, existing)
-                    logger.debug("Закрыта сессия id=%d", existing.id)
+                    logger.debug(f'Закрыта сессия {existing.id} автора {user} с intent {existing.intent}')
 
                 # Открываем новую сессию
                 await open_session(session, author_id, chat_id, intent, msg_timestamp)
@@ -267,7 +271,7 @@ async def collect_messages(session: AsyncSession) -> int:
                 raw_content = doc["file_id"]
                 text_content = None
                 caption = None
-                logger.debug("Аудио-документ (%s) → voice pipeline", mime)
+                logger.debug(f"Аудио-документ ({mime}) → Передаем как голосовое на распознование текста")
             else:
                 content_type = "document"
                 raw_content = doc["file_id"]
@@ -292,7 +296,7 @@ async def collect_messages(session: AsyncSession) -> int:
         if current_session is None:
             # Нет открытой сессии — берём последний известный intent
             last_intent = await get_setting(session, f"last_intent_{author_id}") or "unknown"
-            logger.debug("Нет открытой сессии, используем last_intent='%s'", last_intent)
+            logger.debug(f"Нет открытой сессии, используем last_intent='{last_intent}'")
             current_session = await open_session(
                 session, author_id, chat_id, last_intent, msg_timestamp
             )
@@ -311,6 +315,7 @@ async def collect_messages(session: AsyncSession) -> int:
             doc_info = msg["document"]
             doc_filename = doc_info.get("file_name", "unknown_file")
             doc_mime_type = doc_info.get("mime_type", "application/octet-stream")
+            logger.info(f"Получен документ: '{doc_filename}', тип: {doc_mime_type}")
 
         db_message = Message(
             telegram_message_id=msg["message_id"],
@@ -327,7 +332,7 @@ async def collect_messages(session: AsyncSession) -> int:
             status="pending",
             created_at=msg_timestamp,
             original_caption=caption,  # сохраняем до vision обработки
-            is_forwarded=forward_data.get("is_forwarded", False),
+            is_forwarded=forward_data.get("is_forwarded", False), # или словарь с данными или None
             forward_from_name=forward_data.get("forward_from_name"),
             forward_from_username=forward_data.get("forward_from_username"),
             forward_post_url=forward_data.get("forward_post_url"),
@@ -338,7 +343,7 @@ async def collect_messages(session: AsyncSession) -> int:
         await session.commit()
 
         saved_count += 1
-        logger.debug("Сохранено %s → session_id=%d, intent=%s", content_type, current_session.id, current_session.intent)
+        logger.debug(f"Сохранено {content_type} → session_id={current_session.id}, intent={current_session.intent}")
 
         await save_last_update_id(session, update_id)
 
