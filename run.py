@@ -1,13 +1,8 @@
 import asyncio
-import logging
 
-from src.familylog.collector.telegram import collect_messages, close_all_open_sessions
+from src.familylog.collector.telegram import collect_messages, close_old_open_sessions
+from src.logger import logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
 from src.familylog.processor.assembler import assemble_sessions
 from src.familylog.processor.obsidian_writer import process_assembled_sessions
 from src.familylog.storage.database import init_db, AsyncSessionLocal
@@ -24,11 +19,11 @@ async def main():
 
         # ── 1. Сбор сообщений ───────────────────────────────────────────────
         collected = await collect_messages(session)
-        print(f"{'*' * 50}\nСобрано сообщений: {collected}")
+        logger.info(f"Собрано сообщений: {collected}")
 
         # ── 2. STT — голосовые сообщения ────────────────────────────────────
         voice_count = await process_voice_messages(session)
-        print(f"{'*' * 50}\nОбработано голосовых: {voice_count}")
+        logger.info(f"Обработано голосовых: {voice_count}")
 
         # ── 3. Vision — фото ────────────────────────────────────────────────
         if settings.CONNECTION_TYPE == "offline":
@@ -51,11 +46,11 @@ async def main():
                 await load_model(settings.vision_model)
 
         photo_count = await process_photo_messages(session)
-        print(f"{'*' * 50}\nОбработано фото: {photo_count}")
+        logger.info(f"Обработано фото: {photo_count}")
 
         # ── 3b. Документы ──────────────────────────────────────────────────
         doc_count = await process_document_messages(session)
-        print(f"{'*' * 50}\nОбработано документов: {doc_count}")
+        logger.info(f"Обработано документов: {doc_count}")
 
         # ── 4. Загружаем LLM (выгружаем vision если была загружена) ─────────
         if settings.CONNECTION_TYPE == "offline":
@@ -72,16 +67,16 @@ async def main():
                 await load_model(settings.llm_model)
 
         # ── 5. Закрываем открытые сессии ────────────────────────────────────
-        closed = await close_all_open_sessions(session)
-        print(f"{'*' * 50}\nЗакрыто сессий: {closed}")
+        closed = await close_old_open_sessions(session)
+        logger.info(f"Закрыто сессий: {closed}")
 
         # ── 6. Сборка сессий ────────────────────────────────────────────────
         assembled = await assemble_sessions(session)
-        print(f"{'*' * 50}\nСобрано сессий: {assembled}")
+        logger.info(f"Собрано сессий: {assembled}")
 
         # ── 7. Запись в Obsidian ─────────────────────────────────────────────
         obsidian_count = await process_assembled_sessions(session)
-        print(f"{'*' * 50}\nЗаписано в Obsidian: {obsidian_count}")
+        logger.info(f"Записано в Obsidian: {obsidian_count}")
 
         # ── 8. Выгружаем LLM после завершения ───────────────────────────────
         if settings.CONNECTION_TYPE == "offline":
@@ -89,7 +84,7 @@ async def main():
             if settings.llm_model in loaded:
                 await unload_model(settings.llm_model)
 
-        print(f"{'*' * 50}\nГотово!")
+        print(f"{'*' * 50}Готово!")
 
 
 if __name__ == "__main__":

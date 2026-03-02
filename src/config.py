@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Инфраструктура
     BOT_TOKEN: str
     DATABASE_URL: str = "sqlite+aiosqlite:///familylog.db"
-    CONTEXT_MEMORY_DAYS: int = 90
+    CONTEXT_MEMORY_DAYS: int = 1
     SESSION_TIMEOUT_MINUTES: int = 30
 
     # Telegram — chat_id всех членов семьи
@@ -40,11 +40,11 @@ class Settings(BaseSettings):
     STT_MODEL_ONLINE: str = "google/gemini-2.5-flash"
 
     # Vision
-    VISION_MODEL_OFFLINE: str = "glm-ocr"
+    VISION_MODEL_OFFLINE: str = "qwen/qwen3-vl-4b"
     VISION_MODEL_ONLINE: str = "qwen/qwen-vl-plus"
 
     # LLM
-    LLM_MODEL_OFFLINE: str = "ibm/granite-4-h-tiny" # mistralai/ministral-3-3b ibm/granite-4-h-tiny
+    LLM_MODEL_OFFLINE: str = "openai/gpt-oss-20b"  # mistralai/ministral-3-3b ibm/granite-4-h-tiny qwen_qwen3.5-35b-a3b openai/gpt-oss-20b
     LLM_MODEL_ONLINE: str = "anthropic/claude-3-haiku"
 
     # API endpoints

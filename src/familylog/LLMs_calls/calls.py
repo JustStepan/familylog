@@ -1,3 +1,4 @@
+import pprint
 from typing import Optional
 
 from src.config import settings
@@ -7,7 +8,7 @@ from .client import get_client
 def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
     client = get_client()
     caption_prompt = ''
-    if caption:
+    if caption and caption.strip():
         caption_prompt = f"Заголовок фотографии --> '{caption}' - учитывай это при составлении описания"
 
     try:
@@ -21,8 +22,9 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
 Формат ответа:
 {{"caption": "Заголовок изображения", "description": "Описание изображения"}}
 Не добавляй никакого текста до или после JSON.
-Если пользователь предоставил не пустой caption_prompt, то выходной 'caption' 
-должен быть результатом обогащения первоначального заголовка (caption) описанием фотографии.
+{caption_prompt}
+Если пользователь не предоставил никакой заголовок, то выходной 'caption' 
+должен быть составлен из описания фотографии (description).
 Правила для поля caption:
 - Если caption пустой → создай заголовок на основе описания (3-5 слов)
 - Если caption есть но не соответствует содержимому → замени на точный
@@ -32,7 +34,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"Представь описание фотографии. caption_prompt: {caption_prompt}"},
+                        {"type": "text", "text": "Представь точное описание представленной фотографии."},
                         
                         {
                             "type": "image_url",
@@ -95,9 +97,10 @@ def llm_process_session(
             {"role": "user", "content": f"Интент: {intent}\n\nСодержание:\n{assembled_content}"},
         ],
         temperature=0.1,
-        max_tokens=5000,
+        # max_tokens=3000,
     )
 
+    # pprint.pprint(system_prompt)
     return response.choices[0].message.content
 
 
@@ -117,12 +120,12 @@ def llm_generate_summary(
 Создай структурированный summary. Отвечай ТОЛЬКО валидным JSON:
 
 {{
-  "summary_text": "Краткий текст для Telegram (3-5 предложений, без markdown)",
+  "summary_text": "Краткий текст для Telegram без markdown",
   "content": "Полный markdown файл для Obsidian (с frontmatter)"
 }}
 
 ## Правила для summary_text (Telegram)
-- 3-5 предложений, чистый текст без markdown
+- 3-5 предложений (если событий больше, можно больше), чистый текст без markdown
 - Главные события, выполненные задания, планы
 - Дружелюбный тон, как семейный помощник
 
@@ -147,7 +150,7 @@ def llm_generate_summary(
             {"role": "user", "content": vault_content},
         ],
         temperature=0.1,
-        max_tokens=5000,
+        # max_tokens=5000,
     )
 
     return response.choices[0].message.content

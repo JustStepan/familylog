@@ -1,5 +1,3 @@
-import logging
-
 import httpx
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +42,6 @@ async def save_setting(session: AsyncSession, key: str, value: str) -> None:
     else:
         session.add(Setting(key=key, value=value))
         logger.info(f'В таблице settings создана новая запись: {key} = {value}')
-    await session.commit()
 
 
 async def get_last_update_id(session: AsyncSession) -> int:
@@ -74,7 +71,7 @@ async def close_session(session: AsyncSession, db_session: Session) -> None:
     await session.commit()
 
 
-async def close_all_open_sessions(session: AsyncSession) -> int:
+async def close_old_open_sessions(session: AsyncSession) -> int:
     """Закрывает сессии, в которых последнее сообщение старше SESSION_TIMEOUT_MINUTES."""
     cutoff = datetime.now() - timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES)
 
@@ -115,7 +112,8 @@ async def fetch_updates(offset: int) -> list[dict]:
 
         if not data["ok"]:
             raise Exception(f"Telegram API error: {data}")
-        logger.info(f'Данные от телеграма получены = \n {data}')
+        logger.info(f'Данные от телеграма получены. Всего сообщений: {len(data)}')
+        logger.debug(f'Данные от телеграма получены. = \n {(data)}\n')
         return data["result"]
 
 
@@ -232,9 +230,8 @@ async def collect_messages(session: AsyncSession) -> int:
 
                 # Запоминаем последний intent пользователя
                 await save_setting(session, f"last_intent_{author_id}", intent)
-                await session.commit()
-
                 await save_last_update_id(session, update_id)
+                await session.commit()
                 continue
 
             content_type = "text"

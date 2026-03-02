@@ -669,7 +669,7 @@ async def main():
                 )
 
         # ── 5-7. Сборка и запись ──
-        closed = await close_all_open_sessions(session)
+        closed = await close_old_open_sessions(session)
         assembled = await assemble_sessions(session)
         obsidian_count = await process_assembled_sessions(session)
 

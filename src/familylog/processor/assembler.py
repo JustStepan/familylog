@@ -1,20 +1,18 @@
-import logging
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..storage.models import Session, Message
+from src.logger import logger
 
-logger = logging.getLogger(__name__)
 
-
+@logger.catch
 async def assemble_sessions(session: AsyncSession) -> int:
     result = await session.execute(
         select(Session).where(Session.status == "ready")
     )
 
     sessions = result.scalars().all()
-    logger.debug("Найдено сессий ready = %d", len(sessions))
+    logger.info(f"Найдено сессий ready = {len(sessions)}")
 
     processed_count = 0
     for s in sessions:
@@ -34,8 +32,8 @@ async def assemble_sessions(session: AsyncSession) -> int:
         parts = []
         for msg in messages:
             forward_header = format_forward_header(msg)
-            fallback = f"[Ошибка обработки, message_id={msg.id}]"
-            text = msg.text_content or fallback
+            error_msg = f"[Ошибка обработки, message_id={msg.id}]"
+            text = msg.text_content or error_msg
 
             if msg.message_type == "text":
                 content = f"{forward_header}\n[Текст]: {text}" if forward_header else f"[Текст]: {text}"

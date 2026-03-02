@@ -20,7 +20,7 @@
 import asyncio
 import logging
 
-from src.familylog.collector.telegram import collect_messages, close_all_open_sessions
+from src.familylog.collector.telegram import collect_messages, close_old_open_sessions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,7 +84,7 @@ async def phase1(session):
             print(f"  Выгружена vision модель: {settings.vision_model}")
 
     # ── 5. Закрываем открытые сессии ────────────────────────────────
-    closed = await close_all_open_sessions(session)
+    closed = await close_old_open_sessions(session)
     print(f"{'*' * 50}\nЗакрыто сессий: {closed}")
 
     # ── 6. Сборка сессий ────────────────────────────────────────────

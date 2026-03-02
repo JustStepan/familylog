@@ -9,8 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..storage.telegram_files import download_file
 from src.config import settings
 from ..storage.models import Message
-
-logger = logging.getLogger(__name__)
+from src.logger import logger
 
 # Папка для временных файлов — удаляем после обработки
 MEDIA_DIR = Path("media/voice")
@@ -92,7 +91,7 @@ async def process_voice_messages(session: AsyncSession) -> int:
         wav_path = None
 
         try:
-            logger.info("Обрабатываем аудио сообщение %d...", msg.id)
+            logger.info(f"Обрабатываем аудио сообщение {msg.id}...")
 
             # Скачиваем файл
             ogg_path = await download_file(msg.raw_content, MEDIA_DIR, "ogg")
@@ -102,7 +101,7 @@ async def process_voice_messages(session: AsyncSession) -> int:
 
             # Транскрибируем
             text = transcribe(wav_path)
-            logger.info("Транскрипция: %s...", text[:50])
+            logger.info(f"Транскрипция: {text[:60]}...")
 
             # Обновляем запись в БД
             msg.text_content = text
@@ -112,7 +111,7 @@ async def process_voice_messages(session: AsyncSession) -> int:
             processed_count += 1
 
         except Exception as e:
-            logger.error("Ошибка STT: %s", e)
+            logger.error(f"Ошибка STT: {e}")
             msg.status = "error_stt"
             await session.commit()
 
