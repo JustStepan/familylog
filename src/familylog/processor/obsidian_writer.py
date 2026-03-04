@@ -230,18 +230,17 @@ def fix_obsidian_embeds(content: str) -> str:
 
 
 def extract_json(raw: str) -> str:
-    """Извлекает JSON из ответа reasoning модели (qwen3.5, deepseek и пр.)."""
     import re
-    # Убираем служебный префикс reasoning моделей
     if "<|message|>" in raw:
         raw = raw.split("<|message|>")[-1]
-    # Убираем <think>...</think> блоки (qwen3.5 reasoning chain)
-    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
-    # Если <think> без закрывающего тега — отрезаем всё до первого {
-    if "<think>" in raw:
+    # Убираем <think>...</think> включая варианты с пробелами
+    raw = re.sub(r"<\s*think\s*>.*?<\s*/\s*think\s*>", "", raw, flags=re.DOTALL)
+    # Если think без закрывающего тега — берём всё после первого {
+    if "<think>" in raw.lower():
         idx = raw.find("{")
         if idx >= 0:
             raw = raw[idx:]
-    # Убираем markdown code fences если есть
+    # Убираем |im_end| и подобные артефакты
+    raw = re.sub(r"<\|.*?\|>", "", raw)
     raw = raw.strip().strip("```json").strip("```").strip()
     return raw

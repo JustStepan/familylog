@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     STT_MODEL_ONLINE: str = "google/gemini-2.5-flash"
 
     # Vision
-    VISION_MODEL_OFFLINE: str = "qwen/qwen3-vl-4b"
+    VISION_MODEL_OFFLINE: str = "qwen3.5-4b-mlx"
     VISION_MODEL_ONLINE: str = "qwen/qwen-vl-plus"
 
     # LLM

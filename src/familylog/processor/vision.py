@@ -6,6 +6,8 @@ from sqlalchemy import select
 from slugify import slugify
 from datetime import datetime
 
+from .obsidian_writer import extract_json
+
 from ..schema.llm import PhotoOutput
 
 from ..LLMs_calls.calls import llm_process_photo
@@ -63,7 +65,8 @@ async def process_photo_messages(session: AsyncSession) -> int:
             description = llm_process_photo(base64_str, photo_caption)
 
             # Обновляем запись в БД
-            output = PhotoOutput.model_validate_json(description)
+            cleaned_data = extract_json(description)
+            output = PhotoOutput.model_validate_json(cleaned_data)
             filename = make_photo_filename(output.caption, msg.created_at)
             msg.photo_filename = filename
             msg.original_caption = msg.caption # сохраняем до перезаписи

@@ -46,7 +46,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
                 }
             ],
             temperature=0.1,
-            max_tokens=500,
+            # max_tokens=500,
         )
         return response.choices[0].message.content
 

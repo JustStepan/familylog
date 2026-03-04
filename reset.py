@@ -20,4 +20,4 @@ async def main(numb_old: str, numb_new: str):
         print(f"БД очищена, last_update_id изменен с {numb_old} на {numb_new}")
 
 if __name__ == "__main__":
-    asyncio.run(main('644948417', '644948413'))
+    asyncio.run(main('644948423', '644948417'))
