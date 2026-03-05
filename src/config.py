@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     SESSION_TIMEOUT_MINUTES: int = 30
 
     # Telegram — chat_id всех членов семьи
-    FAMILY_CHAT_IDS: list[int] = [987692540, 6293359903]
+    FAMILY_CHAT_IDS: list[int] = [987692540, 6293359903, 5134352566]
 
     # Obsidian
     OBSIDIAN_VAULT_PATH: str

@@ -3,13 +3,6 @@ from aiogram import Bot
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from src.config import settings
 
-# Список chat_id пользователей которым отправить клавиатуру
-# Добавь сюда ID всех членов семьи
-FAMILY_CHAT_IDS = [
-    987692540,  # Stefan — твой ID из БД
-    6293359903,  #  Диана
-]
-
 
 async def main():
     bot = Bot(token=settings.BOT_TOKEN)
@@ -30,7 +23,7 @@ async def main():
         is_persistent=True,  # не скрывается после нажатия
     )
 
-    for chat_id in FAMILY_CHAT_IDS:
+    for chat_id in settings.FAMILY_CHAT_IDS:
         await bot.send_message(
             chat_id=chat_id,
             text="FamilyBot готов! Выбери тип записи:",
