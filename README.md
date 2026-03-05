@@ -7,15 +7,16 @@ FamilyLog превращает голосовые сообщения, фото, 
 
 ---
 
-## Как это работает
+## Как это работает (прочтите все перед попыткой установить)
 
-Реботает на основе телеграм бота. Вы просто пишете боту как обычно. Выбираете тип записи кнопкой, отправляете голосовые сообщения, фото или текст — и всё. Раз в день (или когда вам удобно) запускаете один скрипт, и FamilyLog:
+Cборщиком и хранилищем сообщений является телеграм бот. Вы просто пишете боту как обычно. Выбираете тип записи кнопкой, отправляете голосовые сообщения, фото или текст — и всё. Раз в день (или когда вам удобно) запускаете один скрипт, и FamilyLog:
 
 - расшифровывает голосовые сообщения в текст
 - описывает фотографии
 - группирует всё в логичные сессии
 - генерирует красивые markdown-заметки с тегами, связями и frontmatter
 - записывает в ваш Obsidian vault
+- делает записи в ваш Google Calendar, если вы установили интеграцию и делаете календарную заметку
 
 Периодически бот присылает сводку — что было записано за неделю.
 
@@ -41,7 +42,7 @@ FamilyLog превращает голосовые сообщения, фото, 
 ---
 
 
-## Архитектура
+## Архитектура (можно пропустить)
 
 ```
 Telegram Bot (polling)
@@ -68,7 +69,7 @@ Telegram Bot (polling)
 [Obsidian Writer] --- JSON --> markdown файл в vault через Local REST API
 ```
 
-## Пайплайн обработки сообщения
+## Пайплайн обработки сообщения (можно пропустить)
 
 1. **Collector** — polling Telegram API, сохранение в SQLite
 2. **STT** — транскрипция voice через GigaAM (offline) или Gemini (online)
@@ -78,11 +79,11 @@ Telegram Bot (polling)
 6. **LLM** — генерация JSON: title, content (markdown + frontmatter), tags, related, people, context_summary
 7. **Obsidian Writer** — запись файла через Local REST API, обновление системных файлов (CURRENT_CONTEXT, TAGS_GLOSSARY, FAMILY_MEMORY), поиск related по тегам, backlinks
 
-## Требования
+## Требования (важно!)
 
 Перед установкой убедитесь, что у вас есть:
 
-- **Python 3.12+**
+- **Python 3.12+** (Тестировалось на 3.12. На других версиях работа не гарантируется.)
 - **[uv](https://docs.astral.sh/uv/)** — менеджер пакетов Python
 - **[ffmpeg](https://ffmpeg.org/)** — для обработки голосовых сообщений
 - **[LM Studio](https://lmstudio.ai/)** — для локальной обработки через LLM (если используете offline режим (пока только offline))
@@ -124,6 +125,7 @@ FAMILY_CHAT_IDS=[123456789, 987654321]   # Telegram ID всех членов с�
 
 # Obsidian
 OBSIDIAN_VAULT_PATH=/путь/к/вашему/vault
+#Берем в настройках плагина. Для локальной работы вполне подойдет "Enable Non-encrypted(HTTP) Server"(см. настройки плагина) с адресом "http://127.0.0.1:27123/"
 OBSIDIAN_API_KEY=ключ_из_плагина_Local_REST_API
 OBSIDIAN_API_URL=http://localhost:27123
 
@@ -173,7 +175,14 @@ vault/
 
 ## Запуск
 
-### Отправить клавиатуру боту
+
+### Скачать STT модели
+
+```bash
+uv run download_models.py
+```
+
+### Отправить клавиатуру боту (единократно)
 
 ```bash
 uv run setup_bot.py
@@ -199,13 +208,6 @@ uv run run.py --summary
 
 Генерирует и отправляет сводку прямо сейчас, независимо от расписания.
 
-
-### Скачать STT модели
-
-```bash
-uv run download_models.py
-```
-
 ---
 
 ## Структура vault после работы
@@ -226,40 +228,42 @@ vault/
 ---
 
 ## Структура проекта
-
 ```
 familylog/
-├── run.py                    ← главная точка входа
-├── setup_bot.py              ← отправка клавиатуры
-├── download_models.py        ← скачивание STT моделей
-├── vault_templates/          ← шаблоны системных файлов Obsidian
+├── run.py                     ← главная точка входа (+ --summary флаг)
+├── setup_bot.py               ← отправка клавиатуры
+├── auth_google.py             ← одноразовая авторизация Google Calendar
+├── download_models.py         ← скачивание STT моделей
+├── vault_templates/           ← шаблоны системных файлов Obsidian
 └── src/
-    ├── config.py             ← все настройки (pydantic-settings + .env)
-    ├── constants.py          ← текстовые константы
+    ├── config.py              ← все настройки (pydantic-settings + .env)
+    ├── constants.py           ← текстовые константы и кнопки бота
     └── familylog/
         ├── collector/
-        │   └── telegram.py   ← сбор сообщений из Telegram
+        │   └── telegram.py    ← сбор сообщений из Telegram
         ├── processor/
-        │   ├── stt.py        ← расшифровка голосовых (GigaAM / Parakeet)
-        │   ├── vision.py     ← описание фото (Qwen-VL)
-        │   ├── documents.py  ← обработка документов
-        │   ├── assembler.py  ← сборка сессий
-        │   ├── summary.py    ← генерация сводок
+        │   ├── stt.py         ← расшифровка голосовых (GigaAM / Parakeet)
+        │   ├── vision.py      ← описание фото (Qwen-VL)
+        │   ├── documents.py   ← обработка документов
+        │   ├── assembler.py   ← сборка сессий
+        │   ├── summary.py     ← генерация сводок
         │   └── obsidian/
-        │       ├── api.py          ← Obsidian REST API
-        │       ├── general_data.py ← загрузка системных файлов
-        │       ├── utils.py        ← генерация имён файлов
-        │       └── write_files.py  ← запись и обновление vault
+        │       ├── api.py           ← Obsidian REST API
+        │       ├── general_data.py  ← загрузка системных файлов
+        │       ├── utils.py         ← генерация имён файлов
+        │       └── write_files.py   ← запись и обновление vault
+        ├── integrations/
+        │   └── google_calendar.py   ← создание событий в Google Calendar
         ├── LLMs_calls/
-        │   ├── client.py        ← OpenAI-совместимый клиент
+        │   ├── client.py        ← OpenAI-совместимый клиент (lru_cache)
         │   ├── calls.py         ← вызовы LLM
         │   └── model_manager.py ← управление моделями LM Studio
         ├── storage/
-        │   ├── database.py      ← SQLAlchemy async
-        │   ├── models.py        ← таблицы БД
-        │   └── telegram_files.py ← скачивание файлов
+        │   ├── database.py       ← SQLAlchemy async
+        │   ├── models.py         ← таблицы БД
+        │   └── telegram_files.py ← скачивание файлов из Telegram
         └── bot/
-            ├── keyboards.py  ← построение клавиатуры
+            ├── keyboards.py  ← построение клавиатуры (build_reply_keyboard)
             └── sender.py     ← отправка сообщений в Telegram
 ```
 
@@ -273,11 +277,11 @@ familylog/
 | БД | SQLite + SQLAlchemy async |
 | Telegram | aiogram, httpx |
 | STT (offline) | onnx-asr: GigaAM v3 (русский язык) |
-| STT (online) | Google Gemini via OpenRouter |
+| STT (online) **В разработке** | Google Gemini via OpenRouter |
 | Vision (offline) | Qwen3.5-VL через LM Studio |
-| Vision (online) | Qwen-VL-Plus via OpenRouter |
+| Vision (online) **В разработке** | Qwen-VL-Plus via OpenRouter |
 | LLM (offline) | LM Studio (любая совместимая модель) |
-| LLM (online) | OpenRouter (Claude, GPT и др.) |
+| LLM (online) **В разработке** | OpenRouter (Claude, GPT и др.) |
 | Obsidian | Local REST API плагин |
 | Настройки | pydantic-settings |
 
@@ -289,15 +293,16 @@ familylog/
 Да. FamilyLog не работает в режиме реального времени. Бот принимает сообщения, Telegram хранит их в очереди. Когда вы запускаете `run.py` — всё накопленное обрабатывается разом.
 
 **Можно ли использовать без LM Studio?**
-Нет. Пока эта возможность находится в разработке. Если будут запросы автор проект адобваит эту возможность.
-
-
+Нет. Пока эта возможность находится в разработке. Если будут запросы автор проекта добваит эту возможность.
 
 **Что если сессия не закрылась?**
 Сессии закрываются автоматически если последнее сообщение было более `SESSION_TIMEOUT_MINUTES` минут назад (по умолчанию 30). Это значение можно изменить в `.env`.
 
 **Как добавить нового члена семьи?**
 Добавьте его Telegram ID в `FAMILY_CHAT_IDS` в `.env` и опишите в `_system/FAMILY_MEMORY.md` в vault.
+
+**А что нужно ручками запускать скрипт?**
+Да, это нужно для того чтобы запустить сборщика сообщений. Для того чтобы реализовать "бесчеловечную" работу приложения нужно устанавливать его на отдельном сервере и запрашивать ответы моделей по API. Однако первоначальная задумака в том, чтобы все работало локально.
 
 ---
 

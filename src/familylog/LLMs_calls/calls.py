@@ -20,7 +20,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
 Ты возвращаешь данные ТОЛЬКО в JSON формате без markdown.
 Формат ответа:
 {{"caption": "Заголовок изображения", "description": "Описание изображения"}}
-Не добавляй никакого текста до или после JSON.
+Не добавляй никакого текста до или после JSON. Отвечай на русском.
 {caption_prompt}
 Если пользователь не предоставил никакой заголовок, то выходной 'caption' 
 должен быть составлен из описания фотографии (description).
@@ -44,8 +44,8 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
                     ]
                 }
             ],
-            temperature=0.1,
-            max_tokens=500,
+            temperature=0.2,
+            # max_tokens=500,
         )
         return response.choices[0].message.content
 

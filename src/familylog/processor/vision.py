@@ -53,7 +53,7 @@ async def process_photo_messages(session: AsyncSession) -> int:
         photo_caption = msg.caption or None
 
         try:
-            logger.info("Обрабатываем фото сообщение %d...", msg.id)
+            logger.info(f"Обрабатываем фото сообщение {msg.id}...")
 
             # Скачиваем файл
             photo_path = await download_file(msg.raw_content, MEDIA_DIR, "jpeg")
@@ -70,14 +70,14 @@ async def process_photo_messages(session: AsyncSession) -> int:
             msg.original_caption = msg.caption # сохраняем до перезаписи
             msg.caption = output.caption  # обновляем заголовок
             msg.text_content = f"Заголовок: {output.caption}. Описание: {output.description}"
-            logger.info("Описание LLM: %s...", msg.text_content[:100])
+            logger.info(f"Описание LLM: {msg.text_content[:100]}...")
             msg.status = "described"
             await session.commit()
 
             processed_count += 1
 
         except Exception as e:
-            logger.error("Ошибка vision: %s", e)
+            logger.error(f"Ошибка vision: {e}")
             msg.status = "error_img"
             await session.commit()
 

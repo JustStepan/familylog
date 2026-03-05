@@ -20,7 +20,7 @@ def get_model():
     return onnx_asr.load_model(
         settings.STT_MODEL_OFFLINE,
         settings.STT_MODEL_PATH,
-        quantization="int8",        # для Parakeet
+        #  quantization="int8",        # для Parakeet
         providers=["CPUExecutionProvider"],
         # providers=["CoreMLExecutionProvider", "CPUExecutionProvider"],  # раскомментировать на Intel Mac / Windows / Linux для ускорения
         # providers=["CUDAExecutionProvider", "CPUExecutionProvider"],    # раскомментировать при наличии NVIDIA GPU
