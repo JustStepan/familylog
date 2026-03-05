@@ -5,6 +5,8 @@
 import onnx_asr
 from src.config import settings
 
+from src.logger import logger
+
 MODELS = {
     "gigaam-v3-e2e-rnnt": "stt_models/gigaam-v3-e2e-rnnt/",       # GigaAM v3 (рекомендуется, ~892MB)
     "gigaam-v3-e2e-ctc":  "stt_models/gigaam-v3-e2e-ctc/",        # GigaAM v3 CTC (~225MB, int8)
@@ -12,9 +14,9 @@ MODELS = {
 }
 
 def download(model_name: str, path: str):
-    print(f"\n⬇️  Загружаем {model_name} → {path}")
+    logger.info(f"\n⬇️  Загружаем {model_name} → {path}")
     onnx_asr.load_model(model_name, path)
-    print(f"✅ {model_name} готов")
+    logger.info(f"✅ {model_name} готов")
 
 if __name__ == "__main__":
     # Загружаем только текущую модель из конфига

@@ -16,6 +16,8 @@ wheels/
 *.db
 
 # Local files/folders
+calendar_credentials*
+calendar_token*
 _local_*
 stt_models/
 media*

@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = "FAKE"
     OPENROUTER_URL: str = "https://openrouter.ai/api/v1"
 
+    GOOGLE_CALENDAR_ID: str = "primary"  # "primary" = основной календарь
+    GOOGLE_CREDENTIALS_FILE: str = "calendar_credentials.json"
+    GOOGLE_TOKEN_FILE: str = "calendar_token.json"
+
     @property
     def stt_model(self) -> str:
         return self.STT_MODEL_OFFLINE if self.CONNECTION_TYPE == "offline" else self.STT_MODEL_ONLINE

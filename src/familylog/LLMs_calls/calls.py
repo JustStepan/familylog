@@ -1,4 +1,3 @@
-import pprint
 from typing import Optional
 
 from src.config import settings
@@ -100,7 +99,6 @@ def llm_process_session(
         # max_tokens=3000,
     )
 
-    pprint.pprint(system_prompt)
     return response.choices[0].message.content
 
 

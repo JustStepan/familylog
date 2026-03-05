@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..LLMs_calls.calls import llm_process_session
 from ..storage.models import Session, Message
+from src.familylog.integrations.google_calendar import create_calendar_event
 from src.logger import logger
 from .obsidian import api, general_data, utils, write_files
 
@@ -118,6 +119,24 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             if existing is None:
                 await api.obsidian_create(filename, content)
                 logger.info(f"Создан файл: {filename}")
+                
+                # Google Calendar — только после того как файл уже создан
+                if intent == "calendar":
+                    calendar_event = output_data.get("calendar_event")
+                    if calendar_event:
+                        event_link = create_calendar_event(
+                            title=title,
+                            date=calendar_event.get("date"),
+                            time_start=calendar_event.get("time_start"),
+                            duration_minutes=calendar_event.get("duration_minutes"),
+                            description=calendar_event.get("description"),
+                        )
+                        if event_link:
+                            fresh = await api.obsidian_get(filename)
+                            if fresh:
+                                gcal_link = f"\n[📅 Открыть в Google Calendar]({event_link})\n"
+                                await api.obsidian_create(filename, fresh + gcal_link)
+                                logger.info("Для intent=calendar был обновлен md файл")
             else:
                 clean_content = write_files.strip_frontmatter(content)
                 await api.obsidian_append(filename, clean_content)
