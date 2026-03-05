@@ -1,18 +1,36 @@
+import sys
 import asyncio
+from datetime import datetime
+from sqlalchemy import select
 
+from src.familylog.bot.sender import send_summary_to_telegram
 from src.familylog.collector.telegram import collect_messages, close_old_open_sessions
-from src.logger import logger
-
+from src.familylog.LLMs_calls.model_manager import (
+    get_loaded_models, load_model, unload_model, switch_model
+)
 from src.familylog.processor.assembler import assemble_sessions
+from src.familylog.processor.documents import process_document_messages
 from src.familylog.processor.obsidian_writer import process_assembled_sessions
-from src.familylog.storage.database import init_db, AsyncSessionLocal
 from src.familylog.processor.stt import process_voice_messages
 from src.familylog.processor.vision import process_photo_messages
-from src.familylog.processor.documents import process_document_messages
+from src.familylog.processor.summary import run_summary, get_last_summary_time
+from src.familylog.storage.database import init_db, AsyncSessionLocal
+from src.familylog.storage.models import Message
 from src.config import settings
+from src.logger import logger
+
+
+async def should_run_summary() -> bool:
+    since = await get_last_summary_time()
+    if since is None:
+        return False
+    days_passed = (datetime.now() - since).days
+    return days_passed >= settings.SUMMARY_INTERVAL_DAYS
 
 
 async def main():
+    force_summary = "--summary" in sys.argv
+
     await init_db()
 
     async with AsyncSessionLocal() as session:
@@ -27,13 +45,7 @@ async def main():
 
         # ── 3. Vision — фото ────────────────────────────────────────────────
         if settings.CONNECTION_TYPE == "offline":
-            from src.familylog.LLMs_calls.model_manager import (
-                get_loaded_models, load_model, unload_model, switch_model
-            )
-
             # Проверяем есть ли pending фото перед загрузкой модели
-            from sqlalchemy import select
-            from src.familylog.storage.models import Message
             pending_photos = await session.execute(
                 select(Message).where(
                     Message.message_type == "photo",
@@ -84,7 +96,14 @@ async def main():
             if settings.llm_model in loaded:
                 await unload_model(settings.llm_model)
 
-        print(f"{'*' * 50}Готово!")
+        # ── 9. Отправляем суммари если нужно (или с флагом "--summary") ─────
+        if force_summary or await should_run_summary():
+            logger.info("Запускаем суммаризацию...")
+            result = await run_summary()
+            if result["summary_text"]:
+                await send_summary_to_telegram(result["summary_text"])
+
+        logger.info(f"{'*' * 50}Готово!")
 
 
 if __name__ == "__main__":

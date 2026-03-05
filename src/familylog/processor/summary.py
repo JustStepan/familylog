@@ -10,6 +10,8 @@ from datetime import datetime
 
 import frontmatter as fm
 
+from src import constants
+
 from ..LLMs_calls.calls import llm_generate_summary
 from src.logger import logger
 from .obsidian import api
@@ -48,7 +50,7 @@ async def collect_vault_content(since: datetime | None) -> dict[str, list[dict]]
     """
     result: dict[str, list[dict]] = {}
 
-    for folder in SUMMARY_FOLDERS:
+    for folder in constants.INTENT_FOLDERS:
         files = await api.obsidian_list_files(folder)
         entries = []
 

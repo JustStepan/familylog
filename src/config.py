@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     SESSION_TIMEOUT_MINUTES: int = 30
 
     # Telegram — chat_id всех членов семьи
-    FAMILY_CHAT_IDS: list[int] = [987692540, 6293359903, 5134352566]
+    FAMILY_CHAT_IDS: list[int] = []
 
     # Obsidian
     OBSIDIAN_VAULT_PATH: str
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Режим подключения: offline (LM Studio) | online (OpenRouter)
     CONNECTION_TYPE: str = "offline"
-
+    SUMMARY_INTERVAL_DAYS: int = 7   # интервал суммаризации
     # ---------------------------------------------------------------------------
     # STT (Speech-to-Text)
     # ---------------------------------------------------------------------------

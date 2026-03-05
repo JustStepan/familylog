@@ -1,5 +1,4 @@
 import base64
-import logging
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,8 +12,7 @@ from ..schema.llm import PhotoOutput
 from ..LLMs_calls.calls import llm_process_photo
 from ..storage.models import Message
 from ..storage.telegram_files import download_file
-
-logger = logging.getLogger(__name__)
+from src.logger import logger
 
 
 MEDIA_DIR = Path("media/images")

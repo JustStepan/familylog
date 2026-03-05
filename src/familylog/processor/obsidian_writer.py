@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 from datetime import datetime
-import pprint
 import frontmatter as fm
 
 from sqlalchemy import select

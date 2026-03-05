@@ -1,15 +1,11 @@
+from functools import lru_cache
 from openai import OpenAI
 from src.config import settings
 
-
-_connection = None
-
-
-def get_client():
-    global _connection
-    if _connection is None:
-        _connection = OpenAI(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-        )
-    return _connection
+@lru_cache(maxsize=1)
+def get_client() -> OpenAI:
+    """Синглтон OpenAI клиента. lru_cache гарантирует один экземпляр."""
+    return OpenAI(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+    )

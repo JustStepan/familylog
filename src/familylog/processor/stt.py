@@ -1,6 +1,6 @@
-import logging
 import subprocess
 from pathlib import Path
+from functools import lru_cache
 
 import onnx_asr
 from sqlalchemy import select
@@ -14,24 +14,18 @@ from src.logger import logger
 # Папка для временных файлов — удаляем после обработки
 MEDIA_DIR = Path("media/voice")
 
-# Модель загружается один раз при импорте модуля
-# Это важно — загрузка занимает несколько секунд
-_model = None
-
-
+@lru_cache(maxsize=1)
 def get_model():
-    """Ленивая загрузка модели — только при первом вызове."""
-    global _model
-    if _model is None:
-        _model = onnx_asr.load_model(
-            settings.STT_MODEL_OFFLINE,
-            settings.STT_MODEL_PATH,
-            quantization="int8",        # раскомментировать для Parakeet
-            providers=["CPUExecutionProvider"],
-            # providers=["CoreMLExecutionProvider", "CPUExecutionProvider"],  # раскомментировать на Intel Mac / Windows / Linux для ускорения
-            # providers=["CUDAExecutionProvider", "CPUExecutionProvider"],    # раскомментировать при наличии NVIDIA GPU
-        )
-    return _model
+    """Загружает модель один раз, кешируется навсегда."""
+    return onnx_asr.load_model(
+        settings.STT_MODEL_OFFLINE,
+        settings.STT_MODEL_PATH,
+        quantization="int8",        # для Parakeet
+        providers=["CPUExecutionProvider"],
+        # providers=["CoreMLExecutionProvider", "CPUExecutionProvider"],  # раскомментировать на Intel Mac / Windows / Linux для ускорения
+        # providers=["CUDAExecutionProvider", "CPUExecutionProvider"],    # раскомментировать при наличии NVIDIA GPU
+    )
+
 
 def convert_to_wav(ogg_path: Path) -> Path:
     """Конвертирует .ogg в .wav через ffmpeg.
