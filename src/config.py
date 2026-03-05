@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Инфраструктура
     BOT_TOKEN: str
     DATABASE_URL: str = "sqlite+aiosqlite:///familylog.db"
-    CONTEXT_MEMORY_DAYS: int = 1
+    CONTEXT_MEMORY_DAYS: int = 30
     SESSION_TIMEOUT_MINUTES: int = 30
     SUMMARY_INTERVAL_DAYS: int = 7
 
