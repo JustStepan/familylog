@@ -8,7 +8,6 @@
 import json
 from datetime import datetime
 
-
 import frontmatter as fm
 
 from ..LLMs_calls.calls import llm_generate_summary
@@ -78,8 +77,12 @@ async def collect_vault_content(since: datetime | None) -> dict[str, list[dict]]
                                 continue
 
                 # Если since задан — фильтруем по дате
-                if since and file_date and file_date < since:
-                    continue
+                if since:
+                    if not file_date:
+                        logger.warning(f"Файл без даты пропущен: {filepath}")
+                        continue
+                    if file_date < since:
+                        continue
 
                 title = post.get("title", "") or filepath
                 tags = post.get("tags", []) or []
@@ -102,8 +105,9 @@ async def collect_vault_content(since: datetime | None) -> dict[str, list[dict]]
 
 def format_content_for_llm(vault_data: dict[str, list[dict]], since: datetime | None) -> str:
     """Форматирует собранные данные для передачи в LLM."""
+    import frontmatter as fm
+    
     period = f"с {since.strftime('%d.%m.%Y')}" if since else "за всё время"
-
     parts = [f"# Данные для summary ({period})\n"]
 
     folder_names = {
@@ -119,15 +123,37 @@ def format_content_for_llm(vault_data: dict[str, list[dict]], since: datetime | 
 
         for entry in entries:
             parts.append(f"### {entry['title']}")
-            # Для summary достаточно содержания без frontmatter
-            content = entry["content"]
-            if content.startswith("---"):
-                split = content.split("---", 2)
-                if len(split) >= 3:
-                    content = split[2].strip()
-            # Ограничиваем длину одной записи
+
+            try:
+                post = fm.loads(entry["content"])
+                author = post.get("author", "")
+                created = post.get("created", "")
+                authors = post.get("authors", [])
+
+                meta_parts = []
+                if created:
+                    meta_parts.append(f"Дата: {created}")
+                if author:
+                    meta_parts.append(f"Автор: {author}")
+                if authors:
+                    meta_parts.append(f"Авторы: {', '.join(authors)}")
+                if meta_parts:
+                    parts.append(f"*{' | '.join(meta_parts)}*")
+
+                raw = entry["content"]
+                if raw.startswith("---"):
+                    split = raw.split("---", 2)
+                    content = split[2].strip() if len(split) >= 3 else raw
+                else:
+                    content = raw
+
+            except Exception as e:
+                logger.warning(f"Ошибка парсинга frontmatter для {entry['path']}: {e}")
+                content = entry["content"]
+
             if len(content) > 2000:
                 content = content[:2000] + "\n...(обрезано)"
+
             parts.append(content)
             parts.append("")
 
@@ -141,7 +167,6 @@ async def generate_summary(since: datetime | None) -> dict:
     """
     # Собираем контент из vault
     vault_data = await collect_vault_content(since)
-
     if not vault_data:
         return {
             "summary_text": "За указанный период новых записей не найдено.",

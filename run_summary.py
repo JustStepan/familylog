@@ -15,20 +15,14 @@
 
 import sys
 import asyncio
-import logging
 
 from aiogram import Bot
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 from src.config import settings
 from src.familylog.processor.summary import run_summary
+from src.logger import logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
 
 KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -56,7 +50,7 @@ async def main():
     result = await run_summary()
 
     summary_text = result["summary_text"]
-    logger.info("--- Summary ---\n%s\n--- end ---", summary_text)
+    logger.info(f"--- Summary ---\n{summary_text}\n--- end ---")
 
     if dry_run:
         logger.info("(dry-run: Telegram отправка пропущена)")
@@ -75,9 +69,9 @@ async def main():
                 text=f"Сводка FamilyLog\n\n{summary_text}",
                 reply_markup=KEYBOARD,
             )
-            logger.info("Отправлено: %d", chat_id)
+            logger.info(f"Отправлено: {chat_id}")
         except Exception as e:
-            logger.error("Ошибка отправки %d: %s", chat_id, e)
+            logger.error(f"Ошибка отправки {chat_id}: {e}")
 
     await bot.session.close()
     logger.info("Готово!")

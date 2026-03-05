@@ -46,7 +46,7 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
                 }
             ],
             temperature=0.1,
-            # max_tokens=500,
+            max_tokens=500,
         )
         return response.choices[0].message.content
 
@@ -100,7 +100,7 @@ def llm_process_session(
         # max_tokens=3000,
     )
 
-    # pprint.pprint(system_prompt)
+    pprint.pprint(system_prompt)
     return response.choices[0].message.content
 
 
@@ -125,12 +125,20 @@ def llm_generate_summary(
 }}
 
 ## Правила для summary_text (Telegram)
-- 3-5 предложений (если событий больше, можно больше), чистый текст без markdown
-- Главные события, выполненные задания, планы
+- Описание основных событий и связей между ними. Нужен чистый текст без markdown
+- Главные события, выполненные задания, планы все это нужно связать по возможности
 - Дружелюбный тон, как семейный помощник
+- Не выдумывай ничего. Только та информация которая была передана для анализа.
 
 ## Правила для content (Obsidian файл)
-- Frontmatter: tags (summary), created, period_start, period_end
+- Frontmatter строго в таком формате:
+---
+tags:
+  - summary
+created: {now_str}
+period_start: YYYY-MM-DD
+period_end: YYYY-MM-DD
+---
 - Секции:
   ### Заметки — краткий обзор тем заметок
   ### Дневник — основные события из дневника
