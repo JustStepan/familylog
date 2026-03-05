@@ -17,14 +17,16 @@ async def download_file(file_id: str, dest_dir: Path, extension: str) -> Path:
             params={"file_id": file_id}
         )
         r.raise_for_status()
-        telegram_path = r.json()["result"]["file_path"]
+        data = r.json()
+        if not data.get("ok"):
+            raise RuntimeError(f"Telegram API error: {data.get('description', 'unknown')}")
+        telegram_path = data["result"]["file_path"]
 
         # Шаг 2: скачиваем сам файл
         r = await client.get(
             f"https://api.telegram.org/file/bot{settings.BOT_TOKEN}/{telegram_path}"
         )
         r.raise_for_status()
-        print(r)
 
     file_path = dest_dir / f"{file_id}.{extension}"
     file_path.write_bytes(r.content)

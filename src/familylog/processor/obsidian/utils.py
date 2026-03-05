@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from slugify import slugify
 
@@ -5,14 +6,13 @@ from src.constants import INTENT_FOLDERS, RUSSIAN_MONTHS
 
 
 def resolve_author(author_id: int, family_memory: str) -> str:
-    """Ищет имя автора в FAMILY_MEMORY по Telegram ID."""
+    pattern = rf'\b{author_id}\b'
     blocks = family_memory.split("### ")
     for block in blocks:
-        if str(author_id) in block:
+        if re.search(pattern, block):
             name = block.split("\n")[0].strip()
             if name:
                 return name
-
     return f"user_{author_id}"
 
 
