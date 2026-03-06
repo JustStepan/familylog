@@ -2,6 +2,7 @@ from datetime import datetime
 import frontmatter as fm
 
 from src.logger import logger
+from src.constants import NOISE_TAGS
 from . import api
 
 
@@ -177,7 +178,7 @@ async def find_related_by_tags(
 ) -> list[str]:
     """Ищет заметки с совпадающими тегами в vault.
 
-    Сканирует папки notes/ и diary/, читает frontmatter каждого файла,
+    Сканирует папки заметок, читает frontmatter каждого файла,
     сравнивает теги. Возвращает до 5 наиболее связанных файлов.
     """
     if not tags:
@@ -206,8 +207,10 @@ async def find_related_by_tags(
                 post = fm.loads(file_content)
                 raw_tags = post.get("tags", []) or []
                 file_tags = set(_normalize_tag(t) for t in raw_tags if t)
-                overlap = len(tags_set & file_tags)
-                if overlap > 0:
+                meaningful_tags = tags_set - NOISE_TAGS # В случае большого и не релевантного количества совпадений можно добавить в константу слишком общие теги
+                file_meaningful = file_tags - NOISE_TAGS
+                overlap = len(meaningful_tags & file_meaningful)
+                if overlap > 0:  # В случае большого и не релевантного количества совпадений поднять до overlap >= 2 
                     shared = tags_set & file_tags
                     logger.debug(f"Related: {filepath} совпадение {overlap} ({shared})")
                     candidates.append((filepath, overlap))
