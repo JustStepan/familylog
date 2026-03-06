@@ -210,7 +210,7 @@ async def find_related_by_tags(
                 meaningful_tags = tags_set - NOISE_TAGS # В случае большого и не релевантного количества совпадений можно добавить в константу слишком общие теги
                 file_meaningful = file_tags - NOISE_TAGS
                 overlap = len(meaningful_tags & file_meaningful)
-                if overlap > 0:  # В случае большого и не релевантного количества совпадений поднять до overlap >= 2 
+                if overlap > 1:  # В случае большого и не релевантного количества совпадений поднять до overlap >= 2 
                     shared = tags_set & file_tags
                     logger.debug(f"Related: {filepath} совпадение {overlap} ({shared})")
                     candidates.append((filepath, overlap))

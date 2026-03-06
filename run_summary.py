@@ -1,73 +1,62 @@
-"""Генерация summary + отправка в Telegram с клавиатурой.
-
-Использование:
-  uv run run_summary.py           — summary + клавиатура
-  uv run run_summary.py --dry-run — только summary, без отправки
-
-Скрипт:
-1. Определяет период с последнего summary
-2. Собирает все записи из vault за этот период
-3. Генерирует summary через LLM
-4. Сохраняет summary в vault/summaries/
-5. Отправляет summary текст в Telegram всем членам семьи
-6. Устанавливает reply keyboard с категориями
-"""
-
 import sys
 import asyncio
 
-from aiogram import Bot
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
 from src.config import settings
-from src.familylog.processor.summary import run_summary
+from src.familylog.processor.summary import generate_summary, get_last_summary_time
+from src.familylog.bot.keyboards import build_reply_keyboard
 from src.logger import logger
-
-
-KEYBOARD = ReplyKeyboardMarkup(
-    keyboard=[
-        [
-            KeyboardButton(text="📝 заметка"),
-            KeyboardButton(text="📔 дневник"),
-        ],
-        [
-            KeyboardButton(text="📅 календарь"),
-            KeyboardButton(text="✅ задание"),
-        ],
-    ],
-    resize_keyboard=True,
-    is_persistent=True,
-)
 
 
 async def main():
     dry_run = "--dry-run" in sys.argv
 
     logger.info("=" * 60)
-    logger.info("FamilyLog Summary")
+    logger.info("FamilyLog Summary" + (" [DRY-RUN]" if dry_run else ""))
     logger.info("=" * 60)
 
-    result = await run_summary()
+    # Определяем период (та же логика что в run_summary())
+    since = await get_last_summary_time()
+    if since:
+        logger.info(f"Последний summary: {since.strftime('%Y-%m-%d %H:%M')}")
+    else:
+        logger.info("Первый запуск summary — собираем всё")
+
+    # generate_summary() — только генерация, без сохранения маркера времени
+    result = await generate_summary(since)
 
     summary_text = result["summary_text"]
     logger.info(f"--- Summary ---\n{summary_text}\n--- end ---")
 
     if dry_run:
-        logger.info("(dry-run: Telegram отправка пропущена)")
+        logger.info("(dry-run: vault и Telegram не изменены)")
         return
 
     if not summary_text:
         logger.info("Нет текста для отправки.")
         return
 
+    # Сохраняем файл в vault
+    from src.familylog.processor.obsidian import api
+    from src.familylog.processor.summary import save_last_summary_time
+    from datetime import datetime
+
+    if result["filename"] and result["content"]:
+        await api.obsidian_create(result["filename"], result["content"])
+        logger.info(f"Сохранён: {result['filename']}")
+
+    await save_last_summary_time(datetime.now())
+
+    # Отправляем в Telegram
+    from aiogram import Bot
     bot = Bot(token=settings.BOT_TOKEN)
+    keyboard = build_reply_keyboard()
 
     for chat_id in settings.FAMILY_CHAT_IDS:
         try:
             await bot.send_message(
                 chat_id=chat_id,
                 text=f"Сводка FamilyLog\n\n{summary_text}",
-                reply_markup=KEYBOARD,
+                reply_markup=keyboard,
             )
             logger.info(f"Отправлено: {chat_id}")
         except Exception as e:

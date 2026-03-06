@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     VISION_MODEL_OFFLINE: str = "qwen3.5-4b-mlx"
 
     # LLM
-    LLM_MODEL_OFFLINE: str = "openai/gpt-oss-20b"
+    LLM_MODEL_OFFLINE: str = "qwen_qwen3.5-35b-a3b" # qwen_qwen3.5-35b-a3b | openai/gpt-oss-20b
 
     # LM Studio endpoints
     LM_STUDIO_URL: str = "http://localhost:1234/v1"
