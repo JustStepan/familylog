@@ -11,6 +11,24 @@ async def load_system_file(filename: str) -> str:
     return content or f"# {filename}\n(file not found)"
 
 
+def parse_context_before(content: str, before: datetime) -> str:
+    """Берёт из CURRENT_CONTEXT только записи СТАРШЕ before — предыдущий контекст."""
+    lines = content.split("\n")
+    include = False
+    result = []
+    for line in lines:
+        if line.startswith("## "):
+            date_str = line.replace("## ", "").strip()
+            try:
+                section_date = datetime.strptime(date_str, "%Y-%m-%d")
+                include = section_date < before
+            except ValueError:
+                include = False
+        if include:
+            result.append(line)
+    return "\n".join(result) if result else ""
+
+
 def parse_current_context(content: str) -> str:
     """Парсит CURRENT_CONTEXT.md и возвращает только записи новее CONTEXT_MEMORY_DAYS."""
     cutoff = datetime.now() - timedelta(days=settings.CONTEXT_MEMORY_DAYS)
