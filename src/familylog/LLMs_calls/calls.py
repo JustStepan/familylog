@@ -167,7 +167,20 @@ period_end: YYYY-MM-DD
             {"role": "user", "content": vault_content},
         ],
         temperature=0.1,
-        max_tokens=5000,
+        # max_tokens=5000,
+    )
+
+    response = client.chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": vault_content},
+        ],
+        temperature=0.2,
+        extra_body={
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+        # max_tokens=5000,
     )
 
     return response.choices[0].message.content
