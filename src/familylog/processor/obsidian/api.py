@@ -7,8 +7,18 @@ from src.logger import logger
 from src.constants import MIME_MAP
 
 
+def _validate_vault_path(path: str) -> None:
+    """Проверяет что путь не выходит за пределы vault (защита от path traversal).
+
+    Raises ValueError если путь содержит '..'.
+    """
+    if ".." in path.split("/"):
+        raise ValueError(f"Недопустимый путь к файлу vault: '{path}'")
+
+
 async def obsidian_get(path: str) -> str | None:
     """Читает файл из vault. Возвращает содержимое или None если не существует."""
+    _validate_vault_path(path)
     async with httpx.AsyncClient(verify=False) as client:
         r = await client.get(
             f"{settings.OBSIDIAN_API_URL}/vault/{path}",
@@ -22,6 +32,7 @@ async def obsidian_get(path: str) -> str | None:
 
 async def obsidian_create(path: str, content: str) -> None:
     """Создаёт или полностью заменяет файл в vault."""
+    _validate_vault_path(path)
     async with httpx.AsyncClient(verify=False) as client:
         r = await client.put(
             f"{settings.OBSIDIAN_API_URL}/vault/{path}",
@@ -43,12 +54,15 @@ async def obsidian_append(path: str, content: str) -> None:
         await obsidian_create(path, existing + "\n" + content)
 
 
-async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
-    """Загружает изображение в vault/attachments/photos/."""
+async def obsidian_upload_image(photo_path: Path, filename: str, dest_folder: str) -> None:
+    """Загружает изображение в vault/{dest_folder}/{filename}.
+
+    dest_folder — папка назначения, например "attachments/photos/2026/03-мар".
+    """
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         with open(photo_path, "rb") as f:
             r = await client.put(
-                f"{settings.OBSIDIAN_API_URL}/vault/attachments/photos/{filename}",
+                f"{settings.OBSIDIAN_API_URL}/vault/{dest_folder}/{filename}",
                 headers={
                     "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
                     "Content-Type": "image/jpeg",
@@ -56,18 +70,21 @@ async def obsidian_upload_image(photo_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    logger.info(f"Загружено фото: attachments/photos/{filename}")
+    logger.info(f"Загружено фото: {dest_folder}/{filename}")
 
 
-async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
-    """Загружает документ в vault/attachments/documents/."""
+async def obsidian_upload_document(doc_path: Path, filename: str, dest_folder: str) -> None:
+    """Загружает документ в vault/{dest_folder}/{filename}.
+
+    dest_folder — папка назначения, например "attachments/documents/2026/03-мар".
+    """
     suffix = Path(filename).suffix.lower()
     content_type = MIME_MAP.get(suffix, "application/octet-stream")
 
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         with open(doc_path, "rb") as f:
             r = await client.put(
-                f"{settings.OBSIDIAN_API_URL}/vault/attachments/documents/{filename}",
+                f"{settings.OBSIDIAN_API_URL}/vault/{dest_folder}/{filename}",
                 headers={
                     "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}",
                     "Content-Type": content_type,
@@ -75,7 +92,7 @@ async def obsidian_upload_document(doc_path: Path, filename: str) -> None:
                 content=f.read(),
             )
             r.raise_for_status()
-    logger.info(f"Загружен документ: attachments/documents/{filename}")
+    logger.info(f"Загружен документ: {dest_folder}/{filename}")
 
 
 async def obsidian_list_files(folder: str) -> list[str]:

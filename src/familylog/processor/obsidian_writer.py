@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 import frontmatter as fm
@@ -57,10 +58,16 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             )
 
             # Парсим JSON ответ; strict=False разрешает буквальные \n внутри строк
-            output_data = json.loads(extract_json(llm_output), strict=False)
+            try:
+                output_data = json.loads(extract_json(llm_output), strict=False)
+            except json.JSONDecodeError as e:
+                logger.error(f"Сессия {s.id}: не удалось распарсить JSON от LLM: {e}\nРаw: {llm_output[:300]}")
+                s.status = "error_json"
+                await session.commit()
+                continue
 
             title = output_data.get("title", "Без заголовка")
-            content = output_data.get("content", "")
+            content = write_files.sanitize_frontmatter(output_data.get("content", ""))
             tags = output_data.get("tags", [])
             people_mentioned = output_data.get("people_mentioned", [])
             new_people = output_data.get("new_people", [])
@@ -93,8 +100,13 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 if "created" not in post.metadata:
                     post["created"] = created_ts.strftime("%Y-%m-%d %H:%M")
                 content = fm.dumps(post)
-            except Exception:
-                pass  # Если frontmatter не парсится — пропускаем
+            except Exception as e:
+                logger.warning(f"Сессия {s.id}: не удалось добавить created в frontmatter: {e}")
+
+            # ── Вычисляем папки для аттачментов (year/month) ──
+            session_dt = s.opened_at or datetime.now()
+            photo_dest = utils.attachment_folder("attachments/photos", session_dt)
+            doc_dest = utils.attachment_folder("attachments/documents", session_dt)
 
             # ── Собираем имена документов для post-processing ──
             doc_messages_result = await session.execute(
@@ -109,13 +121,16 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
 
             # Исправляем ссылки на документы (LLM может исказить имена файлов)
             if doc_filenames:
-                content = write_files.fix_document_references(content, doc_filenames)
+                content = write_files.fix_document_references(content, doc_filenames, doc_dest)
 
             # Исправляем формат embed-ссылок (![alt]([[path]]) → ![[path]])
             content = fix_obsidian_embeds(content)
 
-            # Python генерирует имя файла
-            filename = utils.generate_filename(title, intent, s.opened_at)
+            # Добавляем year/month в пути аттачментов если LLM их пропустил
+            content = fix_attachment_paths(content, session_dt.year, utils.month_folder(session_dt))
+
+            # Python генерирует имя файла (session_dt уже содержит fallback на now())
+            filename = utils.generate_filename(title, intent, session_dt)
 
             # Определяем action: create или append
             existing = await api.obsidian_get(filename)
@@ -194,7 +209,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             except Exception as e:
                 logger.warning(f"Ошибка поиска related: {e}")
 
-            # Загружаем фото в vault
+            # Загружаем фото в vault (в папку с year/month)
             photo_messages = await session.execute(
                 select(Message).where(
                     Message.session_id == s.id,
@@ -205,16 +220,16 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             for photo_msg in photo_messages.scalars().all():
                 photo_path = Path("media/images") / f"{photo_msg.raw_content}.jpeg"
                 if photo_path.exists():
-                    await api.obsidian_upload_image(photo_path, photo_msg.photo_filename)
+                    await api.obsidian_upload_image(photo_path, photo_msg.photo_filename, photo_dest)
                 else:
-                    logger.warning(f"Фото не найдено: {photo_path}", )
+                    logger.warning(f"Фото не найдено: {photo_path}")
 
-            # Загружаем документы в vault
+            # Загружаем документы в vault (в папку с year/month)
             for doc_msg in doc_msgs:
                 ext = Path(doc_msg.document_filename).suffix.lstrip(".") or "bin"
                 doc_path = Path("media/documents") / f"{doc_msg.raw_content}.{ext}"
                 if doc_path.exists():
-                    await api.obsidian_upload_document(doc_path, doc_msg.document_filename)
+                    await api.obsidian_upload_document(doc_path, doc_msg.document_filename, doc_dest)
                 else:
                     logger.warning(f"Документ не найден: {doc_path}")
 
@@ -243,7 +258,6 @@ def fix_obsidian_embeds(content: str) -> str:
     ![alt]([[path]]) → ![[path]]
     ![alt](attachments/...) → ![[attachments/...]]
     """
-    import re
     # ![alt]([[path]]) → ![[path]]
     content = re.sub(r'!\[([^\]]*)\]\(\[\[([^\]]+)\]\]\)', r'![[\2]]', content)
     # ![alt](attachments/...) → ![[attachments/...]]
@@ -251,17 +265,29 @@ def fix_obsidian_embeds(content: str) -> str:
     return content
 
 
+def fix_attachment_paths(content: str, year: int, mfolder: str) -> str:
+    """Вставляет year/month в пути аттачментов если LLM их не указал.
+
+    ![[attachments/photos/photo.jpg]]      → ![[attachments/photos/2026/03-мар/photo.jpg]]
+    ![[attachments/documents/report.pdf]]  → ![[attachments/documents/2026/03-мар/report.pdf]]
+    Пути, уже содержащие /YYYY/ — не изменяются (negative lookahead (?!\\d{4}/).
+    """
+    pattern = r'(!\[\[attachments/(?:photos|documents)/)(?!\d{4}/)([^\]]+\]\])'
+    replacement = rf'\g<1>{year}/{mfolder}/\g<2>'
+    return re.sub(pattern, replacement, content)
+
+
 def extract_json(raw: str) -> str:
-    import re
     if "<|message|>" in raw:
         raw = raw.split("<|message|>")[-1]
     # Убираем <think>...</think> включая варианты с пробелами
     raw = re.sub(r"<\s*think\s*>.*?<\s*/\s*think\s*>", "", raw, flags=re.DOTALL)
-    # Если think без закрывающего тега — берём всё после первого {
+    # Если think без закрывающего тега — ищем JSON-объект по паттерну {"
+    # (первый { внутри think-блока может быть частью размышлений, не JSON)
     if "<think>" in raw.lower():
-        idx = raw.find("{")
-        if idx >= 0:
-            raw = raw[idx:]
+        m = re.search(r'\{[\s\n]*"', raw)
+        if m:
+            raw = raw[m.start():]
     # Убираем |im_end| и подобные артефакты
     raw = re.sub(r"<\|.*?\|>", "", raw)
     raw = raw.strip().strip("```json").strip("```").strip()

@@ -36,21 +36,16 @@ async def assemble_sessions(session: AsyncSession) -> int:
             text = msg.text_content or error_msg
 
             if msg.message_type == "text":
-                content = f"{forward_header}\n[Текст]: {text}" if forward_header else f"[Текст]: {text}"
-                parts.append(content)
+                parts.append(_fmt_line(forward_header, "Текст", text))
             elif msg.message_type == "voice":
-                content = f"{forward_header}\n[Аудио]: {text}" if forward_header else f"[Аудио]: {text}"
-                parts.append(content)
+                parts.append(_fmt_line(forward_header, "Аудио", text))
             elif msg.message_type == "photo":
                 fn = f" filename={msg.photo_filename}" if msg.photo_filename else ""
-                original = f"\n[Оригинальный текст]: {msg.original_caption}" if msg.original_caption else ""
-                content = f"{forward_header}\n[Фото{fn}]: {text}{original}" if forward_header else f"[Фото{fn}]: {text}{original}"
-                parts.append(content)
-
+                extra = f"\n[Оригинальный текст]: {msg.original_caption}" if msg.original_caption else ""
+                parts.append(_fmt_line(forward_header, f"Фото{fn}", text + extra))
             elif msg.message_type == "document":
                 fn = f" filename={msg.document_filename}" if msg.document_filename else ""
-                content = f"{forward_header}\n[Документ{fn}]: {text}" if forward_header else f"[Документ{fn}]: {text}"
-                parts.append(content)
+                parts.append(_fmt_line(forward_header, f"Документ{fn}", text))
 
             msg.status = "assembled"
 
@@ -76,3 +71,9 @@ def format_forward_header(msg) -> str:
         parts.append(f"| {msg.forward_post_url}")
     parts.append("]")
     return " ".join(parts)
+
+
+def _fmt_line(header: str, label: str, text: str) -> str:
+    """Формирует строку сообщения с опциональным заголовком пересланного."""
+    prefix = f"{header}\n" if header else ""
+    return f"{prefix}[{label}]: {text}"

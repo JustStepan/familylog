@@ -4,10 +4,14 @@ from typing import Optional
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# sqlite3 -header -csv familylog.db "SELECT * FROM messages;" > _local_CSV/messages.csv
-# sqlite3 -header -csv familylog.db "SELECT * FROM sessions;" > _local_CSV/sessions.csv
+
 class Base(DeclarativeBase):
-    pass
+    """SQLAlchemy base для всех моделей FamilyLog.
+
+    Экспорт в CSV для отладки:
+        sqlite3 -header -csv familylog.db "SELECT * FROM messages;" > messages.csv
+        sqlite3 -header -csv familylog.db "SELECT * FROM sessions;" > sessions.csv
+    """
 
 
 class Session(Base):

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from src.config import settings
@@ -47,71 +48,22 @@ def llm_process_photo(base64_str: str, caption: Optional[str]) -> str:
             temperature=0.2,
             # max_tokens=500,
         )
+        if not response.choices:
+            raise ValueError("Vision LLM вернул пустой ответ (нет choices)")
         return response.choices[0].message.content
 
     except Exception as e:
         return f"Ошибка API: {e}"
 
 
-def llm_process_session(
-    assembled_content: str,
-    intent: str,
-    author_name: str,
-    created_at,
-    context: dict,
-) -> str:
-    """Обрабатывает assembled_content и возвращает JSON для записи в Obsidian."""
-    client = get_client()
-
-    now_str = created_at.strftime("%Y-%m-%d %H:%M") if created_at else "unknown"
-
-    # Intent-specific правила (если есть)
-    intent_section = ""
-    if context.get("intent_config"):
-        intent_section = f"""
-## Правила для интента: {intent}
-{context['intent_config']}
-"""
-
-    system_prompt = f"""{context['agent_config']}
-{intent_section}
----
-Дата и время: {now_str}
-Автор: {author_name}
-
-## Память о семье
-{context['family_memory']}
-
-## Глоссарий тегов
-{context['tags_glossary']}
-
-## Текущий контекст (последние {settings.CONTEXT_MEMORY_DAYS} дней)
-{context['current_context']}
-"""
-
-    response = client.chat.completions.create(
-        model=settings.llm_model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Интент: {intent}\n\nСодержание:\n{assembled_content}"},
-        ],
-        temperature=0.1,
-        # max_tokens=3000,
-    )
-
-    return response.choices[0].message.content
-
-
 def llm_generate_summary(
     vault_content: str,
-    since: "datetime | None" = None,
+    since: datetime | None = None,
 ) -> str:
     """Генерирует периодический summary по записям из vault."""
-    from datetime import datetime as _dt
-
     client = get_client()
     period = f"с {since.strftime('%d.%m.%Y')}" if since else "за всё время"
-    now_str = _dt.now().strftime("%Y-%m-%d %H:%M")
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     system_prompt = f"""Ты — семейный ассистент. Тебе переданы записи из семейного Obsidian vault {period}.
 
@@ -166,16 +118,6 @@ period_end: YYYY-MM-DD
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": vault_content},
         ],
-        temperature=0.1,
-        # max_tokens=5000,
-    )
-
-    response = client.chat.completions.create(
-        model=settings.llm_model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": vault_content},
-        ],
         temperature=0.2,
         extra_body={
             "chat_template_kwargs": {"enable_thinking": False},
@@ -183,4 +125,6 @@ period_end: YYYY-MM-DD
         # max_tokens=5000,
     )
 
+    if not response.choices:
+        raise ValueError("Summary LLM вернул пустой ответ (нет choices)")
     return response.choices[0].message.content

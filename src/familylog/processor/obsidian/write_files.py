@@ -23,8 +23,9 @@ async def update_current_context(
     month_name = f"{now.month:02d}-{RUSSIAN_MONTHS[now.month - 1]}"
     path = f"_system/context/{now.year}/{month_name}.md"
 
-    tags_str = f" ({', '.join('#' + t for t in tags)})" if tags else ""
-    entry = f"[{filename}]{tags_str.replace('##', '#')}\n{context_summary}" if filename else context_summary
+    # Нормализуем теги: убираем лишний # если он уже есть (LLM возвращает "#тег")
+    tags_str = f" ({', '.join('#' + t.lstrip('#') for t in tags)})" if tags else ""
+    entry = f"[{filename}]{tags_str}\n{context_summary}" if filename else context_summary
 
     content = await api.obsidian_get(path)
     today_header = f"## {now.strftime('%Y-%m-%d')}"
@@ -111,6 +112,24 @@ async def update_family_memory(new_people: list[str]) -> None:
 
     await api.obsidian_create(path, content)
     logger.info(f"Новые люди в FAMILY_MEMORY: {people_to_add}")
+
+
+def sanitize_frontmatter(content: str) -> str:
+    """Убирает JSON-стиль запятые из YAML frontmatter.
+
+    LLM иногда генерирует вложенные блоки с запятыми как в JSON:
+        date: "2026-03-11",   →   date: "2026-03-11"
+        time_start: null,     →   time_start: null
+
+    В блочном YAML запятые как разделители не нужны и ломают парсер.
+    """
+    if not content.startswith("---"):
+        return content
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return content
+    yaml_block = re.sub(r",(\s*\n)", r"\1", parts[1])
+    return f"---{yaml_block}---{parts[2]}"
 
 
 # ─── Запись в Obsidian ───────────────────────────────────────────────────────
@@ -289,18 +308,20 @@ async def add_backlinks(related_files: list[str], current_filename: str) -> None
             continue
 
 
-def fix_document_references(content: str, doc_filenames: list[str]) -> str:
+def fix_document_references(
+    content: str, doc_filenames: list[str], dest_folder: str = "attachments/documents"
+) -> str:
     """Исправляет ссылки на документы в контенте — гарантирует точное имя файла.
 
     LLM может исказить имя файла (заменить пробелы на _ и т.д.).
-    Эта функция находит и исправляет такие ссылки.
+    dest_folder — папка назначения документов, например "attachments/documents/2026/03-мар".
     """
     if not doc_filenames:
         return content
 
     for fn in doc_filenames:
         # Вариант с подчёркиваниями вместо пробелов (частая ошибка LLM)
-        mangled = fn.replace(" ", "_").replace(",", "").replace(",", "")
+        mangled = fn.replace(" ", "_").replace(",", "")
         # Вариант без запятых
         no_comma = fn.replace(",", "")
 
@@ -310,9 +331,10 @@ def fix_document_references(content: str, doc_filenames: list[str]) -> str:
         if no_comma != fn and no_comma in content:
             content = content.replace(no_comma, fn)
 
-        # Если ссылка на документ вообще отсутствует — добавляем в конец
-        if fn not in content:
-            content = content.rstrip() + f"\n\n![[attachments/documents/{fn}]]\n"
+        # Если ссылка на документ вообще отсутствует — добавляем в конец.
+        # Используем regex чтобы найти basename независимо от пути (year/month могут быть разными).
+        if not re.search(re.escape(fn), content):
+            content = content.rstrip() + f"\n\n![[{dest_folder}/{fn}]]\n"
             logger.info(f"Вручную добавлена ссылка на документ: {fn}")
 
     return content

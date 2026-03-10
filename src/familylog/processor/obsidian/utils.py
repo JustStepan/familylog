@@ -10,6 +10,16 @@ def month_folder(dt: datetime) -> str:
     return f"{dt.month:02d}-{RUSSIAN_MONTHS[dt.month - 1]}"
 
 
+def attachment_folder(base_folder: str, dt: datetime) -> str:
+    """Возвращает путь к папке аттачментов с year/month.
+
+    Примеры:
+      attachment_folder("attachments/photos", dt) → "attachments/photos/2026/03-мар"
+      attachment_folder("attachments/documents", dt) → "attachments/documents/2026/03-мар"
+    """
+    return f"{base_folder}/{dt.year}/{month_folder(dt)}"
+
+
 def resolve_author(author_id: int, family_memory: str) -> str:
     pattern = rf'\b{author_id}\b'
     blocks = family_memory.split("### ")

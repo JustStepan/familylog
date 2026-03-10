@@ -3,10 +3,10 @@
 Агент использует инструменты для итеративного сбора контекста из Obsidian vault
 перед генерацией финального JSON ответа.
 """
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from typing import Annotated, Sequence, TypedDict
 
-import frontmatter as fm
 import httpx
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
@@ -69,7 +69,6 @@ def _obsidian_list_files_sync(folder: str) -> list[str]:
 
 def _load_context_for_period_sync() -> str:
     """Загружает контекст из месячных файлов за CONTEXT_MEMORY_DAYS (синхронно)."""
-    from datetime import timedelta
     now = datetime.now()
     cutoff = now - timedelta(days=settings.CONTEXT_MEMORY_DAYS)
     seen: set[tuple[int, int]] = set()
@@ -126,7 +125,6 @@ def search_related_notes(tags: str) -> str:
     """Search recent notes with overlapping tags using the context index.
     Input: comma-separated tag names without # (e.g. 'здоровье,дети,планы').
     Returns up to 5 most relevant note paths sorted by tag overlap count."""
-    import re
     tag_list = [t.strip().lstrip("#") for t in tags.split(",") if t.strip()]
     if not tag_list:
         return "No tags provided"
