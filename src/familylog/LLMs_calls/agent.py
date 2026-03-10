@@ -179,9 +179,7 @@ _llm = ChatOpenAI(
     # требует strict-режим для всех инструментов, которого LangChain не создаёт.
     # Вместо этого отключаем thinking через extra_body — тот же эффект
     # (нет <think>-тегов), без конфликта с bind_tools.
-    model_kwargs={
-        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}
-    },
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
 )
 _llm_with_tools = _llm.bind_tools(TOOLS)
 
