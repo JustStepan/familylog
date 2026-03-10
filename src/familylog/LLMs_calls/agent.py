@@ -175,8 +175,13 @@ _llm = ChatOpenAI(
     base_url=settings.llm_base_url,
     api_key=settings.llm_api_key,
     temperature=0.1,
-    # json_object: гарантирует валидный JSON на выходе и убирает <think>-теги
-    model_kwargs={"response_format": {"type": "json_object"}},
+    # response_format=json_object несовместим с function tools в LM Studio:
+    # требует strict-режим для всех инструментов, которого LangChain не создаёт.
+    # Вместо этого отключаем thinking через extra_body — тот же эффект
+    # (нет <think>-тегов), без конфликта с bind_tools.
+    model_kwargs={
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}
+    },
 )
 _llm_with_tools = _llm.bind_tools(TOOLS)
 
