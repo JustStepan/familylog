@@ -36,10 +36,10 @@ class Settings(BaseSettings):
     STT_MODEL_PATH: str = f"{BASE_DIR}/stt_models/gigaam-v3-e2e-rnnt/"  # stt_models/parakeet-tdt-0.6b-v3-int8/
 
     # Vision
-    VISION_MODEL_OFFLINE: str = "qwen3.5-4b-optiq"
+    VISION_MODEL_OFFLINE: str = "qwen3.5-0.8b"
 
     # LLM
-    LLM_MODEL_OFFLINE: str = "qwen3.5-9b-optiq" # openai/gpt-oss-20b qwen3.5-9b-mlx
+    LLM_MODEL_OFFLINE: str = "qwen3.5-4b" # openai/gpt-oss-20b qwen3.5-9b-mlx
 
     # LM Studio endpoints
     LM_STUDIO_URL: str = "http://localhost:1234/v1"
