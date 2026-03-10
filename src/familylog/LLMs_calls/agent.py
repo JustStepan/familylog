@@ -175,6 +175,8 @@ _llm = ChatOpenAI(
     base_url=settings.llm_base_url,
     api_key=settings.llm_api_key,
     temperature=0.1,
+    # json_object: гарантирует валидный JSON на выходе и убирает <think>-теги
+    model_kwargs={"response_format": {"type": "json_object"}},
 )
 _llm_with_tools = _llm.bind_tools(TOOLS)
 

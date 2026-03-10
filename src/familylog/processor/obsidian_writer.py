@@ -3,11 +3,13 @@ import re
 from pathlib import Path
 from datetime import datetime
 import frontmatter as fm
+from pydantic import ValidationError
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..LLMs_calls.agent import process_session_with_agent
+from ..schema.llm import SessionOutput
 from ..storage.models import Session, Message
 from src.familylog.integrations.google_calendar import create_calendar_event
 from src.logger import logger
@@ -57,11 +59,15 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 created_at=s.last_message_at or s.opened_at,
             )
 
-            # Парсим JSON ответ; strict=False разрешает буквальные \n внутри строк
+            # Парсим и валидируем JSON ответ агента через Pydantic.
+            # json.loads(strict=False) сначала — чтобы разрешить буквальные \n
+            # внутри строковых значений (LLM иногда их не экранирует).
             _extracted = extract_json(llm_output)
             try:
-                output_data = json.loads(_extracted, strict=False)
-            except json.JSONDecodeError as e:
+                out = SessionOutput.model_validate(
+                    json.loads(_extracted, strict=False)
+                )
+            except (json.JSONDecodeError, ValidationError) as e:
                 logger.error(
                     f"Сессия {s.id}: не удалось распарсить JSON от LLM: {e}"
                     f"\nRaw[:300]:       {llm_output[:300]}"
@@ -71,15 +77,14 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 await session.commit()
                 continue
 
-            title = output_data.get("title", "Без заголовка")
-            raw_content = output_data.get("content", "")
             content = write_files.sanitize_frontmatter(
-                write_files.fix_frontmatter_position(raw_content)
+                write_files.fix_frontmatter_position(out.content)
             )
-            tags = output_data.get("tags", [])
-            people_mentioned = output_data.get("people_mentioned", [])
-            new_people = output_data.get("new_people", [])
-            context_summary = output_data.get("context_summary", "")
+            title = out.title
+            tags = out.tags                        # уже нормализованы field_validator'ом
+            people_mentioned = out.people_mentioned
+            new_people = out.new_people
+            context_summary = out.context_summary
 
             # Telegram-аккаунты из пересланных сообщений приходят с @.
             # Для тегов — убираем @, для FAMILY_MEMORY — не добавляем вообще.
@@ -149,14 +154,14 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 
                 # Google Calendar — только после того как файл уже создан
                 if intent == "calendar":
-                    calendar_event = output_data.get("calendar_event")
+                    calendar_event = out.calendar_event
                     if calendar_event:
                         event_link = create_calendar_event(
                             title=title,
-                            date=calendar_event.get("date"),
-                            time_start=calendar_event.get("time_start"),
-                            duration_minutes=calendar_event.get("duration_minutes"),
-                            description=calendar_event.get("description"),
+                            date=calendar_event.date,
+                            time_start=calendar_event.time_start,
+                            duration_minutes=calendar_event.duration_minutes,
+                            description=calendar_event.description,
                         )
                         if event_link:
                             fresh = await api.obsidian_get(filename)
@@ -182,7 +187,7 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             # ── Ищем related: LLM-предложения + совпадение по тегам ──
             try:
                 # LLM может вернуть related из CURRENT_CONTEXT
-                llm_related = output_data.get("related", [])
+                llm_related = out.related
 
                 # Поиск по совпадению тегов в vault
                 tag_related = await write_files.find_related_by_tags(tags, filename, intent)

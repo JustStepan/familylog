@@ -12,7 +12,10 @@ import frontmatter as fm
 
 from src import constants
 
+from pydantic import ValidationError
+
 from ..LLMs_calls.calls import llm_generate_summary
+from ..schema.llm import SummaryOutput
 from .obsidian.general_data import load_context_before
 from src.logger import logger
 from .obsidian import api
@@ -202,10 +205,16 @@ async def generate_summary(since: datetime | None) -> dict:
 
     # Генерируем summary через LLM
     llm_output = llm_generate_summary(llm_input, since)
-    output_data = json.loads(extract_json(llm_output), strict=False)
+    try:
+        out = SummaryOutput.model_validate(
+            json.loads(extract_json(llm_output), strict=False)
+        )
+    except (json.JSONDecodeError, ValidationError) as e:
+        logger.error(f"Summary: не удалось распарсить JSON от LLM: {e}")
+        return {"summary_text": "", "filename": "", "content": ""}
 
-    summary_text = output_data.get("summary_text", "")
-    summary_content = output_data.get("content", "")
+    summary_text = out.summary_text
+    summary_content = out.content
 
     # Генерируем имя файла
     now = datetime.now()
