@@ -8,7 +8,7 @@
 
 ## Дополнительное поле calendar_event (ОБЯЗАТЕЛЬНО для календаря)
 
-К стандартным полям из AGENT_CONFIG добавь в JSON:
+К стандартным полям из AGENT_CONFIG добавь в JSON как **отдельное поле верхнего уровня**:
 ```json
 "calendar_event": {
   "date": "YYYY-MM-DD",
@@ -17,6 +17,9 @@
   "description": "Краткое описание для Google Calendar"
 }
 ```
+
+> ⚠️ **НЕ включай `calendar_event` в поле `content`** — только как отдельное поле JSON.
+> Поле `content` содержит ТОЛЬКО markdown с frontmatter. `calendar_event` — соседнее поле.
 
 ### Правила извлечения даты и времени
 

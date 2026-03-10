@@ -67,7 +67,10 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 continue
 
             title = output_data.get("title", "Без заголовка")
-            content = write_files.sanitize_frontmatter(output_data.get("content", ""))
+            raw_content = output_data.get("content", "")
+            content = write_files.sanitize_frontmatter(
+                write_files.fix_frontmatter_position(raw_content)
+            )
             tags = output_data.get("tags", [])
             people_mentioned = output_data.get("people_mentioned", [])
             new_people = output_data.get("new_people", [])

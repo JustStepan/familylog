@@ -114,6 +114,47 @@ async def update_family_memory(new_people: list[str]) -> None:
     logger.info(f"Новые люди в FAMILY_MEMORY: {people_to_add}")
 
 
+def fix_frontmatter_position(content: str) -> str:
+    """Перемещает frontmatter в начало, если LLM поместил его в конец.
+
+    LLM иногда генерирует контент в порядке: сначала тело, потом frontmatter,
+    иногда с мусором после закрывающего --- (например calendar_event).
+
+    В Obsidian это рендерится некорректно:
+        --- → горизонтальная линия (HR)
+        author: Степан → H2 (Setext-заголовок из-за --- снизу)
+
+    Алгоритм: ищем все пары --- в тексте. Берём последнюю пару,
+    внутри которой есть YAML-ключи (tags/created/author).
+    Всё что после закрывающего --- — добавляем в конец тела.
+    """
+    content = content.strip()
+    if content.startswith("---"):
+        return content  # Frontmatter уже на месте
+
+    # Позиции всех --- стоящих на отдельной строке
+    markers = [m.start() for m in re.finditer(r'(?:^|\n)---(?:\n|$)', content)]
+    if len(markers) < 2:
+        return content
+
+    # Ищем последнюю пару маркеров, где между ними есть YAML-ключи
+    for i in range(len(markers) - 1, 0, -1):
+        start = markers[i - 1]
+        end = markers[i]
+        # Вырезаем текст между --- и ---
+        inner_start = start + (0 if content[start] == '-' else 1)  # учитываем \n перед ---
+        yaml_text = content[inner_start + 4 : end].strip()  # +4 пропускаем "---\n"
+        if not re.search(r'^(tags|created|author)\s*:', yaml_text, re.MULTILINE):
+            continue
+
+        body_before = content[:inner_start].strip()
+        leftover = content[end + 4:].strip()  # +4 пропускаем "---\n" или "---"
+        body = "\n\n".join(filter(None, [body_before, leftover]))
+        return f"---\n{yaml_text}\n---\n{body}"
+
+    return content
+
+
 def sanitize_frontmatter(content: str) -> str:
     """Убирает JSON-стиль запятые из YAML frontmatter.
 

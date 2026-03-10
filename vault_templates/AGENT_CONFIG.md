@@ -27,7 +27,15 @@
 ### content
 - Полный markdown с YAML frontmatter (между `---`)
 - Frontmatter обязательно содержит: `tags`, `created`, `author`
-- Формат frontmatter:
+
+> ⚠️ **КРИТИЧНО: frontmatter — ПЕРВЫЕ строки `content`, НИКОГДА не в конце!**
+> Структура поля `content` (JSON-строка):
+> ```
+> "---\ntags:\n- тег1\n- тег2\ncreated: 2026-03-10 18:26\nauthor: Степан\n---\n# Заголовок\n\nТекст заметки..."
+> ```
+> Тело заметки (`# Заголовок`, текст) — ПОСЛЕ закрывающего `---`, не до него.
+
+Формат frontmatter:
 ```yaml
 ---
 tags:
