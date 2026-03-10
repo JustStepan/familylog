@@ -3,6 +3,8 @@ import asyncio
 from datetime import datetime
 from sqlalchemy import select
 
+import httpx
+
 from src.familylog.bot.sender import send_summary_to_telegram
 from src.familylog.collector.telegram import collect_messages, close_old_open_sessions
 from src.familylog.LLMs_calls.model_manager import (
@@ -20,6 +22,67 @@ from src.config import settings
 from src.logger import logger
 
 
+# ─── Preflight checks ────────────────────────────────────────────────────────
+
+async def _check_obsidian() -> tuple[bool, str]:
+    """Проверяет доступность Obsidian Local REST API."""
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=5) as client:
+            r = await client.get(
+                f"{settings.OBSIDIAN_API_URL}/vault/",
+                headers={"Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}"},
+            )
+            if r.status_code == 401:
+                return False, "неверный OBSIDIAN_API_KEY в файле .env"
+            return True, ""
+    except Exception:
+        return False, "нет соединения"
+
+
+async def _check_lm_studio() -> tuple[bool, str]:
+    """Проверяет доступность LM Studio Server."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"{settings.LM_STUDIO_BASE_URL}/api/v1/models")
+            if r.status_code == 200:
+                return True, ""
+        return False, "сервер ответил с ошибкой"
+    except Exception:
+        return False, "нет соединения"
+
+
+async def preflight_checks() -> None:
+    """Проверяет все внешние зависимости перед запуском пайплайна.
+    При неудаче печатает понятное сообщение и завершает процесс."""
+    errors: list[str] = []
+
+    if settings.CONNECTION_TYPE == "offline":
+        ok, reason = await _check_lm_studio()
+        if not ok:
+            errors.append(
+                f"  ⛔  LM Studio недоступен ({reason})\n"
+                f"      → Откройте LM Studio и нажмите «Start Server»\n"
+                f"      → Ожидаемый адрес: {settings.LM_STUDIO_BASE_URL}"
+            )
+
+    ok, reason = await _check_obsidian()
+    if not ok:
+        errors.append(
+            f"  ⛔  Obsidian Local REST API недоступен ({reason})\n"
+            f"      → Откройте Obsidian с активным плагином Local REST API\n"
+            f"      → Ожидаемый адрес: {settings.OBSIDIAN_API_URL}"
+        )
+
+    if errors:
+        print("\n" + "─" * 55)
+        print("  FamilyLog не может запуститься. Проверьте зависимости:\n")
+        print("\n".join(errors))
+        print("─" * 55 + "\n")
+        sys.exit(1)
+
+
+# ─── Summary helper ──────────────────────────────────────────────────────────
+
 async def should_run_summary() -> bool:
     since = await get_last_summary_time()
     if since is None:
@@ -31,6 +94,7 @@ async def should_run_summary() -> bool:
 async def main():
     force_summary = "--summary" in sys.argv
 
+    await preflight_checks()
     await init_db()
 
     async with AsyncSessionLocal() as session:

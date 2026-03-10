@@ -6,7 +6,7 @@ import frontmatter as fm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..LLMs_calls.calls import llm_process_session
+from ..LLMs_calls.agent import process_session_with_agent
 from ..storage.models import Session, Message
 from src.familylog.integrations.google_calendar import create_calendar_event
 from src.logger import logger
@@ -48,13 +48,12 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             # Определяем автора
             author_name = utils.resolve_author(s.author_id, context["family_memory"])
 
-            # Передаём в LLM (last_message_at — реальное время записи, не время открытия сессии)
-            llm_output = llm_process_session(
+            # Агент итеративно собирает контекст из vault и генерирует JSON
+            llm_output = process_session_with_agent(
                 assembled_content=s.assembled_content,
                 intent=intent,
                 author_name=author_name,
                 created_at=s.last_message_at or s.opened_at,
-                context=context,
             )
 
             # Парсим JSON ответ
@@ -66,6 +65,11 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             people_mentioned = output_data.get("people_mentioned", [])
             new_people = output_data.get("new_people", [])
             context_summary = output_data.get("context_summary", "")
+
+            # Telegram-аккаунты из пересланных сообщений приходят с @.
+            # Для тегов — убираем @, для FAMILY_MEMORY — не добавляем вообще.
+            people_mentioned = [p.lstrip("@").strip() for p in people_mentioned if p and p.strip()]
+            new_people = [p for p in new_people if p and not p.startswith("@")]
 
             # Генерируем теги из имён упомянутых людей (кроме автора)
             for person in people_mentioned:

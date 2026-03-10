@@ -217,7 +217,7 @@ async def find_related_by_tags(
             except Exception:
                 continue
 
-    logger.debug(f"Related итого: {total_files} файлов, {len(candidates)} кандидатов")
+    logger.debug(f"Related итого: {total_files} файлов, {len(candidates)} кандидатов") 
 
     # Сортируем по количеству совпавших тегов, берём top-5
     candidates.sort(key=lambda x: x[1], reverse=True)
