@@ -22,8 +22,6 @@ from src.config import settings
 from src.logger import logger
 
 
-# ─── Preflight checks ────────────────────────────────────────────────────────
-
 async def _check_obsidian() -> tuple[bool, str]:
     """Проверяет доступность Obsidian Local REST API."""
     try:
@@ -51,7 +49,7 @@ async def _check_lm_studio() -> tuple[bool, str]:
         return False, "нет соединения"
 
 
-async def preflight_checks() -> None:
+async def run_checks() -> None:
     """Проверяет все внешние зависимости перед запуском пайплайна.
     При неудаче печатает понятное сообщение и завершает процесс."""
     errors: list[str] = []
@@ -60,17 +58,17 @@ async def preflight_checks() -> None:
         ok, reason = await _check_lm_studio()
         if not ok:
             errors.append(
-                f"  ⛔  LM Studio недоступен ({reason})\n"
-                f"      → Откройте LM Studio и нажмите «Start Server»\n"
-                f"      → Ожидаемый адрес: {settings.LM_STUDIO_BASE_URL}"
+                f"LM Studio недоступен ({reason})\n"
+                f"→ Откройте LM Studio и нажмите «Start Server»\n"
+                f"→ Ожидаемый адрес: {settings.LM_STUDIO_BASE_URL}"
             )
 
     ok, reason = await _check_obsidian()
     if not ok:
         errors.append(
-            f"  ⛔  Obsidian Local REST API недоступен ({reason})\n"
-            f"      → Откройте Obsidian с активным плагином Local REST API\n"
-            f"      → Ожидаемый адрес: {settings.OBSIDIAN_API_URL}"
+            f"Obsidian Local REST API недоступен ({reason})\n"
+            f"→ Откройте Obsidian с активным плагином Local REST API\n"
+            f"→ Ожидаемый адрес: {settings.OBSIDIAN_API_URL}"
         )
 
     if errors:
@@ -80,8 +78,6 @@ async def preflight_checks() -> None:
         print("─" * 55 + "\n")
         sys.exit(1)
 
-
-# ─── Summary helper ──────────────────────────────────────────────────────────
 
 async def should_run_summary() -> bool:
     since = await get_last_summary_time()
@@ -94,7 +90,7 @@ async def should_run_summary() -> bool:
 async def main():
     force_summary = "--summary" in sys.argv
 
-    await preflight_checks()
+    await run_checks()
     await init_db()
 
     async with AsyncSessionLocal() as session:

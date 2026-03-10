@@ -90,7 +90,7 @@ async def process_voice_messages(session: AsyncSession) -> int:
             # Скачиваем файл
             ogg_path = await download_file(msg.raw_content, MEDIA_DIR, "ogg")
 
-            # Конвертируем
+            # Конвертируем 
             wav_path = convert_to_wav(ogg_path)
 
             # Транскрибируем

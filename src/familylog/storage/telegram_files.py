@@ -11,7 +11,7 @@ async def download_file(file_id: str, dest_dir: Path, extension: str) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     async with httpx.AsyncClient(timeout=30) as client:
-        # Шаг 1: получаем путь к файлу на серверах Telegram
+        # Получаем путь к файлу на серверах Telegram
         r = await client.get(
             f"https://api.telegram.org/bot{settings.BOT_TOKEN}/getFile",
             params={"file_id": file_id}
@@ -22,7 +22,7 @@ async def download_file(file_id: str, dest_dir: Path, extension: str) -> Path:
             raise RuntimeError(f"Telegram API error: {data.get('description', 'unknown')}")
         telegram_path = data["result"]["file_path"]
 
-        # Шаг 2: скачиваем сам файл
+        # Скачиваем файл
         r = await client.get(
             f"https://api.telegram.org/file/bot{settings.BOT_TOKEN}/{telegram_path}"
         )

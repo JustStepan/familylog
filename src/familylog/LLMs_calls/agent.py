@@ -1,8 +1,3 @@
-"""LangGraph agent — замена llm_process_session.
-
-Агент использует инструменты для итеративного сбора контекста из Obsidian vault
-перед генерацией финального JSON ответа.
-"""
 import re
 from datetime import datetime, timedelta
 from typing import Annotated, Sequence, TypedDict
@@ -18,7 +13,6 @@ from src.config import settings
 from src.constants import NOISE_TAGS, RUSSIAN_MONTHS
 from src.logger import logger
 from ..processor.obsidian.general_data import parse_current_context
-
 
 
 def _obsidian_get_sync(path: str) -> str | None:

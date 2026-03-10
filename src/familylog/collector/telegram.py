@@ -105,9 +105,9 @@ async def fetch_updates(offset: int) -> list[dict]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
             f"{TG_API}/getUpdates",
-            params={"offset": offset + 1, "limit": 200, "timeout": 10},
+            params={"offset": offset + 1, "limit": 200, "timeout": 5},
         )
-        logger.info(f'Пробуем достать данные из телеграма Параметры offset = {offset} - это значение id последнего сообщения в чате.')
+        logger.info(f'Пробуем достать данные из телеграма параметры offset = {offset} - это значение id последнего сообщения в чате.')
         data = response.json()
 
         if not data["ok"]:
@@ -180,7 +180,6 @@ def parse_forward(msg: dict) -> dict:
 
 async def collect_messages(session: AsyncSession) -> int:
     """Собирает новые сообщения из Telegram и сохраняет в БД.
-
     Логика сессий:
     - Маркер → закрыть старую сессию, открыть новую, сохранить last_intent
     - Контент с открытой сессией → привязать к ней
@@ -223,7 +222,7 @@ async def collect_messages(session: AsyncSession) -> int:
                 existing = await get_open_session(session, author_id)
                 if existing:
                     await close_session(session, existing)
-                    logger.debug(f'Закрыта сессия {existing.id} автора {user} с intent {existing.intent}')
+                    logger.info(f'Закрыта сессия {existing.id} автора {user} с intent {existing.intent}')
 
                 # Открываем новую сессию
                 await open_session(session, author_id, chat_id, intent, msg_timestamp)
@@ -256,6 +255,7 @@ async def collect_messages(session: AsyncSession) -> int:
             if forward and forward.get("type") == "channel":
                 channel = forward["chat"]
                 forward_info = f"[Переслано из @{channel.get('username', channel['title'])}]"
+                logger.debug(f'Получили пересланное фото "{forward_info}"')
                 caption = f"{forward_info}\n{caption}" if caption else forward_info # Если переслано то в заголовке описание поста (обычно так)
 
         elif "document" in msg:
@@ -280,6 +280,7 @@ async def collect_messages(session: AsyncSession) -> int:
                 if forward and forward.get("type") == "channel":
                     channel = forward["chat"]
                     forward_info = f"[Переслано из @{channel.get('username', channel['title'])}]"
+                    logger.debug(f'Получили пересланный документ "{forward_info}"')
                     caption = f"{forward_info}\n{caption}" if caption else forward_info
 
         else:

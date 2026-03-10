@@ -9,8 +9,7 @@ from src.constants import MIME_MAP
 
 def _validate_vault_path(path: str) -> None:
     """Проверяет что путь не выходит за пределы vault (защита от path traversal).
-
-    Raises ValueError если путь содержит '..'.
+    Raises ValueError если путь содержит '..'. На будущее для онлайн.
     """
     if ".." in path.split("/"):
         raise ValueError(f"Недопустимый путь к файлу vault: '{path}'")
