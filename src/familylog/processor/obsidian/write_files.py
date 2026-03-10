@@ -1,42 +1,45 @@
+import re
 from datetime import datetime
 import frontmatter as fm
 
 from src.logger import logger
-from src.constants import NOISE_TAGS
+from src.constants import NOISE_TAGS, RUSSIAN_MONTHS
 from . import api
+from . import general_data
 
 
 async def update_current_context(
     context_summary: str, filename: str = "", tags: list[str] | None = None
 ) -> None:
-    """Добавляет краткое описание записи в CURRENT_CONTEXT.md.
+    """Добавляет краткое описание записи в месячный context-файл.
 
-    Формат: - [filename] (теги) Описание...
-    Это позволяет LLM видеть имена файлов и ставить related.
+    Путь: _system/context/{year}/{MM-месяц}.md
+    Формат строки: - [filename] (#тег1, #тег2)\nSummary...
     """
     if not context_summary:
         return
 
-    # Формируем строку с filename и тегами для LLM
-    tags_str = f" ( {', '.join('#' + t for t in tags)})" if tags else ""
+    now = datetime.now()
+    month_name = f"{now.month:02d}-{RUSSIAN_MONTHS[now.month - 1]}"
+    path = f"_system/context/{now.year}/{month_name}.md"
+
+    tags_str = f" ({', '.join('#' + t for t in tags)})" if tags else ""
     entry = f"[{filename}]{tags_str.replace('##', '#')}\n{context_summary}" if filename else context_summary
 
-    path = "_system/CURRENT_CONTEXT.md"
     content = await api.obsidian_get(path)
-    today_header = f"## {datetime.now().strftime('%Y-%m-%d')}"
+    today_header = f"## {now.strftime('%Y-%m-%d')}"
 
     if content is None:
-        content = f"# Current Context\n\n{today_header}\n- {entry}\n"
+        content = f"# Context {now.strftime('%B %Y')}\n\n{today_header}\n- {entry}\n"
         await api.obsidian_create(path, content)
-        return
-
-    if today_header in content:
+    elif today_header in content:
         content = content.rstrip() + f"\n- {entry}\n"
+        await api.obsidian_create(path, content)
     else:
         content = content.rstrip() + f"\n\n{today_header}\n- {entry}\n"
+        await api.obsidian_create(path, content)
 
-    await api.obsidian_create(path, content)
-    logger.info(f"Обновлён CURRENT_CONTEXT: {entry[:80]}...")
+    logger.info(f"Обновлён context ({path}): {entry[:80]}...")
 
 
 async def update_tags_glossary(tags: list[str]) -> None:
@@ -176,50 +179,39 @@ def inject_tags_to_frontmatter(content: str, tags: list[str]) -> str:
 async def find_related_by_tags(
     tags: list[str], current_filename: str, intent: str
 ) -> list[str]:
-    """Ищет заметки с совпадающими тегами в vault.
+    """Ищет заметки с совпадающими тегами через месячные context-файлы.
 
-    Сканирует папки заметок, читает frontmatter каждого файла,
-    сравнивает теги. Возвращает до 5 наиболее связанных файлов.
+    Вместо обхода всех файлов vault читает уже готовый индекс контекста
+    (записи вида: - [filepath] (#тег1, #тег2)\nSummary...).
+    Возвращает до 5 наиболее связанных файлов.
     """
     if not tags:
         logger.debug("Нет тегов для поиска related")
         return []
 
-    # Нормализуем входные теги (убираем #) для корректного сравнения
-    tags_set = set(_normalize_tag(t) for t in tags if t)
-    logger.debug(f"Ищем related для {current_filename}, теги: {tags_set}")
-    candidates: list[tuple[str, int]] = []  # (filename, кол-во совпавших тегов)
+    tags_set = set(_normalize_tag(t) for t in tags if t) - NOISE_TAGS
+    if not tags_set:
+        return []
 
-    # Сканируем все папки с заметками
-    total_files = 0
-    for folder in ("notes", "diary", "calendar", "tasks"):
-        files = await api.obsidian_list_files(folder)
-        logger.debug(f"Папка {folder}/: найдено {len(files)} файлов")
-        for filepath in files:
-            total_files += 1
-            # Не связываем с самим собой
-            if filepath == current_filename:
-                continue
-            file_content = await api.obsidian_get(filepath)
-            if not file_content:
-                continue
-            try:
-                post = fm.loads(file_content)
-                raw_tags = post.get("tags", []) or []
-                file_tags = set(_normalize_tag(t) for t in raw_tags if t)
-                meaningful_tags = tags_set - NOISE_TAGS # В случае большого и не релевантного количества совпадений можно добавить в константу слишком общие теги
-                file_meaningful = file_tags - NOISE_TAGS
-                overlap = len(meaningful_tags & file_meaningful)
-                if overlap > 1:  # В случае большого и не релевантного количества совпадений поднять до overlap >= 2 
-                    shared = tags_set & file_tags
-                    logger.debug(f"Related: {filepath} совпадение {overlap} ({shared})")
-                    candidates.append((filepath, overlap))
-            except Exception:
-                continue
+    context_text = await general_data.load_context_for_period()
+    candidates: list[tuple[str, int]] = []
 
-    logger.debug(f"Related итого: {total_files} файлов, {len(candidates)} кандидатов") 
+    # Парсим строки вида: - [filepath] (#тег1, #тег2)
+    entry_re = re.compile(r"^- \[([^\]]+\.md)\]\s*(?:\(([^)]*)\))?", re.MULTILINE)
+    for m in entry_re.finditer(context_text):
+        filepath = m.group(1)
+        if filepath == current_filename:
+            continue
+        tags_str = m.group(2) or ""
+        file_tags = set(
+            _normalize_tag(t) for t in tags_str.split(",") if t.strip()
+        ) - NOISE_TAGS
+        overlap = len(tags_set & file_tags)
+        if overlap > 1:
+            logger.debug(f"Related (context): {filepath} совпадение {overlap}")
+            candidates.append((filepath, overlap))
 
-    # Сортируем по количеству совпавших тегов, берём top-5
+    logger.debug(f"Related итого из контекста: {len(candidates)} кандидатов")
     candidates.sort(key=lambda x: x[1], reverse=True)
     return [c[0] for c in candidates[:5]]
 

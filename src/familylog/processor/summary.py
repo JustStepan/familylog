@@ -13,7 +13,7 @@ import frontmatter as fm
 from src import constants
 
 from ..LLMs_calls.calls import llm_generate_summary
-from .obsidian.general_data import parse_context_before
+from .obsidian.general_data import load_context_before
 from src.logger import logger
 from .obsidian import api
 from .obsidian_writer import extract_json
@@ -52,7 +52,7 @@ async def collect_vault_content(since: datetime | None) -> dict[str, list[dict]]
     result: dict[str, list[dict]] = {}
 
     for folder in constants.INTENT_FOLDERS.values():
-        files = await api.obsidian_list_files(folder)
+        files = await api.obsidian_list_files_recursive(folder)
         entries = []
 
         for filepath in files:
@@ -192,19 +192,17 @@ async def generate_summary(since: datetime | None) -> dict:
 
     # Форматируем для LLM
     llm_input = format_content_for_llm(vault_data, since)
-    #  Добавляем контекст в саммари (до даты since)
+    # Добавляем pre-period контекст из месячных файлов
     if since:
-        raw_context = await api.obsidian_get("_system/CURRENT_CONTEXT.md")
-        if raw_context:
-            prev_context = parse_context_before(raw_context, since)
-            if prev_context:
-                llm_input += f"\n\n---\n## Контекст до этого периода\n{prev_context}"
+        prev_context = await load_context_before(since)
+        if prev_context:
+            llm_input += f"\n\n---\n## Контекст до этого периода\n{prev_context}"
 
     logger.debug(f"LLM input:\n{llm_input}")
 
     # Генерируем summary через LLM
     llm_output = llm_generate_summary(llm_input, since)
-    output_data = json.loads(extract_json(llm_output))
+    output_data = json.loads(extract_json(llm_output), strict=False)
 
     summary_text = output_data.get("summary_text", "")
     summary_content = output_data.get("content", "")

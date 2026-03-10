@@ -103,3 +103,41 @@ async def obsidian_list_files(folder: str) -> list[str]:
                     path = f"{folder}/{path}"
                 result.append(path)
         return result
+
+
+async def obsidian_list_files_recursive(folder: str) -> list[str]:
+    """Рекурсивно обходит папку и возвращает все .md файлы.
+
+    Поддерживает вложенную структуру {folder}/{year}/{month}/*.md,
+    а также обратную совместимость с плоскими файлами прямо в папке.
+    Элементы без расширения считаются подпапками.
+    """
+    async with httpx.AsyncClient(verify=False) as client:
+        r = await client.get(
+            f"{settings.OBSIDIAN_API_URL}/vault/{folder}/",
+            headers={"Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}"},
+        )
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        data = r.json()
+        items = data.get("files", [])
+
+    result = []
+    for item in items:
+        name = item if isinstance(item, str) else item.get("path", "")
+        name = name.rstrip("/")
+        if not name:
+            continue
+        basename = name.split("/")[-1]
+        if "." in basename:
+            # Файл — берём только .md
+            if name.endswith(".md"):
+                full = f"{folder}/{name}" if not name.startswith(f"{folder}/") else name
+                result.append(full)
+        else:
+            # Нет расширения → подпапка, рекурсируем
+            subdir = f"{folder}/{name}"
+            result.extend(await obsidian_list_files_recursive(subdir))
+
+    return result

@@ -15,7 +15,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from src.config import settings
-from src.constants import NOISE_TAGS
+from src.constants import NOISE_TAGS, RUSSIAN_MONTHS
 from src.logger import logger
 from ..processor.obsidian.general_data import parse_current_context
 
@@ -65,6 +65,33 @@ def _obsidian_list_files_sync(folder: str) -> list[str]:
 
 
 
+# ─── Sync context loader (month-based) ───────────────────────────────────────
+
+def _load_context_for_period_sync() -> str:
+    """Загружает контекст из месячных файлов за CONTEXT_MEMORY_DAYS (синхронно)."""
+    from datetime import timedelta
+    now = datetime.now()
+    cutoff = now - timedelta(days=settings.CONTEXT_MEMORY_DAYS)
+    seen: set[tuple[int, int]] = set()
+    parts: list[str] = []
+
+    current = now
+    while current >= cutoff:
+        ym = (current.year, current.month)
+        if ym not in seen:
+            seen.add(ym)
+            mname = f"{current.month:02d}-{RUSSIAN_MONTHS[current.month - 1]}"
+            path = f"_system/context/{current.year}/{mname}.md"
+            content = _obsidian_get_sync(path)
+            if content:
+                parts.append(content)
+        current = current.replace(day=1) - timedelta(days=1)
+
+    if not parts:
+        return "(no recent context)"
+    return parse_current_context("\n\n".join(parts))
+
+
 @tool
 def get_tags_glossary() -> str:
     """Get the tags glossary — list of all existing tags in the vault with descriptions."""
@@ -83,10 +110,7 @@ def get_family_memory() -> str:
 def get_current_context() -> str:
     """Get recent notes context — brief descriptions of notes created in the last N days.
     Use this to find related notes and understand recent activity."""
-    content = _obsidian_get_sync("_system/CURRENT_CONTEXT.md")
-    if not content:
-        return "(No recent context)"
-    return parse_current_context(content)
+    return _load_context_for_period_sync()
 
 
 @tool
@@ -99,36 +123,34 @@ def get_intent_rules(intent: str) -> str:
 
 @tool
 def search_related_notes(tags: str) -> str:
-    """Search vault for notes that share tags with the current entry.
+    """Search recent notes with overlapping tags using the context index.
     Input: comma-separated tag names without # (e.g. 'здоровье,дети,планы').
     Returns up to 5 most relevant note paths sorted by tag overlap count."""
+    import re
     tag_list = [t.strip().lstrip("#") for t in tags.split(",") if t.strip()]
     if not tag_list:
         return "No tags provided"
 
-    tags_set = set(tag_list)
+    tags_set = set(tag_list) - NOISE_TAGS
+    if not tags_set:
+        return "No meaningful tags to search"
+
+    context_text = _load_context_for_period_sync()
     candidates: list[tuple[str, int]] = []
 
-    for folder in ("notes", "diary", "calendar", "tasks"):
-        files = _obsidian_list_files_sync(folder)
-        for filepath in files:
-            file_content = _obsidian_get_sync(filepath)
-            if not file_content:
-                continue
-            try:
-                post = fm.loads(file_content)
-                raw_tags = post.get("tags", []) or []
-                file_tags = set(t.lstrip("#") for t in raw_tags if t)
-                meaningful = tags_set - NOISE_TAGS
-                file_meaningful = file_tags - NOISE_TAGS
-                overlap = len(meaningful & file_meaningful)
-                if overlap > 1:
-                    candidates.append((filepath, overlap))
-            except Exception:
-                continue
+    entry_re = re.compile(r"^- \[([^\]]+\.md)\]\s*(?:\(([^)]*)\))?", re.MULTILINE)
+    for m in entry_re.finditer(context_text):
+        filepath = m.group(1)
+        tags_str = m.group(2) or ""
+        file_tags = set(
+            t.strip().lstrip("#") for t in tags_str.split(",") if t.strip()
+        ) - NOISE_TAGS
+        overlap = len(tags_set & file_tags)
+        if overlap > 1:
+            candidates.append((filepath, overlap))
 
     if not candidates:
-        return "No related notes found"
+        return "No related notes found in recent context"
 
     candidates.sort(key=lambda x: x[1], reverse=True)
     lines = [f"- {path} (совпадений тегов: {count})" for path, count in candidates[:5]]

@@ -56,8 +56,8 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
                 created_at=s.last_message_at or s.opened_at,
             )
 
-            # Парсим JSON ответ
-            output_data = json.loads(extract_json(llm_output))
+            # Парсим JSON ответ; strict=False разрешает буквальные \n внутри строк
+            output_data = json.loads(extract_json(llm_output), strict=False)
 
             title = output_data.get("title", "Без заголовка")
             content = output_data.get("content", "")
