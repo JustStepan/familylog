@@ -13,7 +13,7 @@
   "related": ["notes/Filename_27-фев-26.md"],
   "people_mentioned": ["Степан", "Диана"],
   "new_people": ["Имя нового человека"],
-  "context_summary": "2-3 предложения описывающих суть записи"
+  "context_summary": "2-4 предложения описывающих суть записи"
 }
 ```
 
