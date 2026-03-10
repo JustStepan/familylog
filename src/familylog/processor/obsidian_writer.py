@@ -58,10 +58,15 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
             )
 
             # Парсим JSON ответ; strict=False разрешает буквальные \n внутри строк
+            _extracted = extract_json(llm_output)
             try:
-                output_data = json.loads(extract_json(llm_output), strict=False)
+                output_data = json.loads(_extracted, strict=False)
             except json.JSONDecodeError as e:
-                logger.error(f"Сессия {s.id}: не удалось распарсить JSON от LLM: {e}\nРаw: {llm_output[:300]}")
+                logger.error(
+                    f"Сессия {s.id}: не удалось распарсить JSON от LLM: {e}"
+                    f"\nRaw[:300]:       {llm_output[:300]}"
+                    f"\nExtracted[:500]: {_extracted[:500]}"
+                )
                 s.status = "error_json"
                 await session.commit()
                 continue
@@ -285,13 +290,18 @@ def extract_json(raw: str) -> str:
         raw = raw.split("<|message|>")[-1]
     # Убираем <think>...</think> включая варианты с пробелами
     raw = re.sub(r"<\s*think\s*>.*?<\s*/\s*think\s*>", "", raw, flags=re.DOTALL)
-    # Если think без закрывающего тега — ищем JSON-объект по паттерну {"
-    # (первый { внутри think-блока может быть частью размышлений, не JSON)
+    # Если think без закрывающего тега — ищем ПОСЛЕДНИЙ { в начале строки.
+    # Берём последний, а не первый: модель может написать черновик JSON внутри
+    # thinking-блока, а финальный ответ идёт в конце вывода.
     if "<think>" in raw.lower():
-        m = re.search(r'\{[\s\n]*"', raw)
-        if m:
-            raw = raw[m.start():]
-    # Убираем |im_end| и подобные артефакты
+        matches = list(re.finditer(r"(?:^|\n)(\{)", raw))
+        if matches:
+            raw = raw[matches[-1].start(1):]
+    # Убираем <|im_end|> и подобные артефакты
     raw = re.sub(r"<\|.*?\|>", "", raw)
-    raw = raw.strip().strip("```json").strip("```").strip()
-    return raw
+    # Убираем обёртку ```json...``` — strip(chars) работает посимвольно,
+    # поэтому используем re.sub для точного удаления подстрок
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return raw.strip()
