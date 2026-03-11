@@ -68,29 +68,29 @@ def fix_attachment_paths(content: str, year: int, mfolder: str) -> str:
 
 def _parse_llm_response(session_id: int, llm_output: str) -> SessionOutput | None:
     """Извлекает и валидирует JSON из вывода LLM. None → ошибка (уже залогирована)."""
-    _extracted = extract_json(llm_output)
+    extracted = extract_json(llm_output)
     try:
         return SessionOutput.model_validate(
-            json.loads(_extracted, strict=False)
+            json.loads(extracted, strict=False)
         )
     except (json.JSONDecodeError, ValidationError) as e:
         logger.error(
             f"Сессия {session_id}: не удалось распарсить JSON от LLM: {e}"
             f"\nRaw[:300]:       {llm_output[:300]}"
-            f"\nExtracted[:500]: {_extracted[:500]}"
+            f"\nExtracted[:500]: {extracted[:500]}"
         )
         return None
 
 
 def _build_tags(
     out: SessionOutput, author_name: str
-) -> tuple[list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str]]:
     """Строит теги и нормализует списки людей из SessionOutput.
 
     Telegram-аккаунты (начинаются с @) убираются из people_mentioned
     и не добавляются в new_people — они не попадают в FAMILY_MEMORY.
 
-    Возвращает (tags, people_mentioned, new_people).
+    Возвращает (tags, new_people).
     """
     tags = list(out.tags)  # копируем: будем аппендить person-теги, не мутируем модель
     people_mentioned = [p.lstrip("@").strip() for p in out.people_mentioned if p and p.strip()]
@@ -104,7 +104,7 @@ def _build_tags(
         if ptag := write_files.generate_person_tag(person):
             tags.append(ptag)
 
-    return tags, people_mentioned, new_people
+    return tags, new_people
 
 
 async def _update_related_files(
@@ -197,7 +197,7 @@ async def _process_single_session(
         return False
 
     # Строим теги и нормализуем списки людей
-    tags, people_mentioned, new_people = _build_tags(out, author_name)
+    tags, new_people = _build_tags(out, author_name)
 
     # Фиксируем позицию frontmatter и убираем JSON-запятые из YAML
     content = write_files.sanitize_frontmatter(

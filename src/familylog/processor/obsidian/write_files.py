@@ -129,13 +129,14 @@ def fix_frontmatter_position(content: str) -> str:
     Всё что после закрывающего --- — добавляем в конец тела.
     """
     content = content.strip()
-    if content.startswith("---"):
-        return content  # Frontmatter уже на месте
-
     # Позиции всех --- стоящих на отдельной строке
     markers = [m.start() for m in re.finditer(r'(?:^|\n)---(?:\n|$)', content)]
-    if len(markers) < 2:
+    if len(markers) < 2 or content.startswith("---"):
+        if len(markers) < 2:
+            logger.warning('В ответе LLM только один "---" или вовсе отсутствует! Проверить формирование frontmatter')
         return content
+
+    logger.warning('Сработало внутреннее исправление fix_frontmatter_position')
 
     # Ищем последнюю пару маркеров, где между ними есть YAML-ключи
     for i in range(len(markers) - 1, 0, -1):
@@ -157,18 +158,14 @@ def fix_frontmatter_position(content: str) -> str:
 
 def sanitize_frontmatter(content: str) -> str:
     """Убирает JSON-стиль запятые из YAML frontmatter.
-
     LLM иногда генерирует вложенные блоки с запятыми как в JSON:
         date: "2026-03-11",   →   date: "2026-03-11"
         time_start: null,     →   time_start: null
-
     В блочном YAML запятые как разделители не нужны и ломают парсер.
     """
     if not content.startswith("---"):
         return content
     parts = content.split("---", 2)
-    if len(parts) < 3:
-        return content
     yaml_block = re.sub(r",(\s*\n)", r"\1", parts[1])
     return f"---{yaml_block}---{parts[2]}"
 

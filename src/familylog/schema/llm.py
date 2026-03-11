@@ -14,13 +14,13 @@ class CalendarEvent(BaseModel):
 
 
 class SessionOutput(BaseModel):
-    title: str = Field("Без заголовка", description="Краткий заголовок 3-7 слов")
+    title: str = Field(..., description="Краткий заголовок 3-7 слов")
     content: str = Field(..., description="Полный markdown с YAML frontmatter")
-    tags: list[str] = Field(default_factory=list, description="Теги с #")
+    tags: list[str] = Field(..., min_length=1, description="Теги с #")
     related: list[str] = Field(default_factory=list, description="Связанные файлы")
     people_mentioned: list[str] = Field(default_factory=list, description="Упомянутые люди")
     new_people: list[str] = Field(default_factory=list, description="Новые люди не из памяти")
-    context_summary: str = Field("", description="2-4 предложения о сути записи")
+    context_summary: str = Field(..., description="2-4 предложения о сути записи")
     calendar_event: CalendarEvent | None = Field(None, description="Только для intent=calendar")
 
     @field_validator("tags", mode="before")
