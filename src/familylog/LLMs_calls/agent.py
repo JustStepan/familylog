@@ -115,38 +115,9 @@ def get_intent_rules(intent: str) -> str:
 
 
 # @tool
-# def search_related_notes(tags: str) -> str:
-#     """Search recent notes with overlapping tags using the context index.
-#     Input: comma-separated tag names without # (e.g. 'здоровье,дети,планы').
-#     Returns up to 5 most relevant note paths sorted by tag overlap count."""
-#     tag_list = [t.strip().lstrip("#") for t in tags.split(",") if t.strip()]
-#     if not tag_list:
-#         return "No tags provided"
+# def semantsc_search_related_notes(?tags: str) -> str:
+# TODO: добавить semantic search тул (embedding-based) вместо tag-overlap search
 
-#     tags_set = set(tag_list) - NOISE_TAGS
-#     if not tags_set:
-#         return "No meaningful tags to search"
-
-#     context_text = _load_context_for_period_sync()
-#     candidates: list[tuple[str, int]] = []
-
-#     entry_re = re.compile(r"^- \[([^\]]+\.md)\]\s*(?:\(([^)]*)\))?", re.MULTILINE)
-#     for m in entry_re.finditer(context_text):
-#         filepath = m.group(1)
-#         tags_str = m.group(2) or ""
-#         file_tags = set(
-#             t.strip().lstrip("#") for t in tags_str.split(",") if t.strip()
-#         ) - NOISE_TAGS
-#         overlap = len(tags_set & file_tags)
-#         if overlap >= settings.RELATED_NOTES_MIN_TAG_OVERLAP:
-#             candidates.append((filepath, overlap))
-
-#     if not candidates:
-#         return "No related notes found in recent context"
-
-#     candidates.sort(key=lambda x: x[1], reverse=True)
-#     lines = [f"- {path} (совпадений тегов: {count})" for path, count in candidates[:5]]
-#     return "Related notes:\n" + "\n".join(lines)
 
 @tool
 def read_note(path: str) -> str:
@@ -188,7 +159,7 @@ class AgentState(TypedDict):
 
 def _call_llm(state: AgentState) -> AgentState:
     messages = list(state["messages"])
-    logger.info(f'+++++Количество сообщений: {len(list(state["messages"]))}')
+    logger.info(f'Количество сообщений в  state: {len(list(state["messages"]))}')
     step = len(messages)
     logger.debug(f"[Agent step {step}] Вызов LLM, сообщений в стейте: {step}")
     
@@ -252,8 +223,7 @@ _TOOL_INSTRUCTIONS = """
 1. `get_intent_rules("{intent}")` — получи правила форматирования для данного интента
 2. `get_tags_glossary` — получи список существующих тегов, выбери подходящие
 3. `get_current_context` — получи последние записи (нужно для поля `related`)
-4. `search_related_notes` — найди похожие записи по тегам (вызови ПОСЛЕ определения тегов)
-5. `get_family_memory` — если в тексте упомянуты незнакомые люди
+4. `get_family_memory` — если в тексте упомянуты незнакомые люди
 
 После сбора всего необходимого контекста — сгенерируй финальный JSON ответ.
 Отвечай ТОЛЬКО валидным JSON, без markdown-обёртки и пояснений.
