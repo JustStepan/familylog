@@ -114,39 +114,39 @@ def get_intent_rules(intent: str) -> str:
     return content or f"(No specific rules for intent: {intent})"
 
 
-@tool
-def search_related_notes(tags: str) -> str:
-    """Search recent notes with overlapping tags using the context index.
-    Input: comma-separated tag names without # (e.g. 'здоровье,дети,планы').
-    Returns up to 5 most relevant note paths sorted by tag overlap count."""
-    tag_list = [t.strip().lstrip("#") for t in tags.split(",") if t.strip()]
-    if not tag_list:
-        return "No tags provided"
+# @tool
+# def search_related_notes(tags: str) -> str:
+#     """Search recent notes with overlapping tags using the context index.
+#     Input: comma-separated tag names without # (e.g. 'здоровье,дети,планы').
+#     Returns up to 5 most relevant note paths sorted by tag overlap count."""
+#     tag_list = [t.strip().lstrip("#") for t in tags.split(",") if t.strip()]
+#     if not tag_list:
+#         return "No tags provided"
 
-    tags_set = set(tag_list) - NOISE_TAGS
-    if not tags_set:
-        return "No meaningful tags to search"
+#     tags_set = set(tag_list) - NOISE_TAGS
+#     if not tags_set:
+#         return "No meaningful tags to search"
 
-    context_text = _load_context_for_period_sync()
-    candidates: list[tuple[str, int]] = []
+#     context_text = _load_context_for_period_sync()
+#     candidates: list[tuple[str, int]] = []
 
-    entry_re = re.compile(r"^- \[([^\]]+\.md)\]\s*(?:\(([^)]*)\))?", re.MULTILINE)
-    for m in entry_re.finditer(context_text):
-        filepath = m.group(1)
-        tags_str = m.group(2) or ""
-        file_tags = set(
-            t.strip().lstrip("#") for t in tags_str.split(",") if t.strip()
-        ) - NOISE_TAGS
-        overlap = len(tags_set & file_tags)
-        if overlap >= settings.RELATED_NOTES_MIN_TAG_OVERLAP:
-            candidates.append((filepath, overlap))
+#     entry_re = re.compile(r"^- \[([^\]]+\.md)\]\s*(?:\(([^)]*)\))?", re.MULTILINE)
+#     for m in entry_re.finditer(context_text):
+#         filepath = m.group(1)
+#         tags_str = m.group(2) or ""
+#         file_tags = set(
+#             t.strip().lstrip("#") for t in tags_str.split(",") if t.strip()
+#         ) - NOISE_TAGS
+#         overlap = len(tags_set & file_tags)
+#         if overlap >= settings.RELATED_NOTES_MIN_TAG_OVERLAP:
+#             candidates.append((filepath, overlap))
 
-    if not candidates:
-        return "No related notes found in recent context"
+#     if not candidates:
+#         return "No related notes found in recent context"
 
-    candidates.sort(key=lambda x: x[1], reverse=True)
-    lines = [f"- {path} (совпадений тегов: {count})" for path, count in candidates[:5]]
-    return "Related notes:\n" + "\n".join(lines)
+#     candidates.sort(key=lambda x: x[1], reverse=True)
+#     lines = [f"- {path} (совпадений тегов: {count})" for path, count in candidates[:5]]
+#     return "Related notes:\n" + "\n".join(lines)
 
 @tool
 def read_note(path: str) -> str:
@@ -164,7 +164,6 @@ TOOLS = [
     get_family_memory,
     get_current_context,
     get_intent_rules,
-    search_related_notes,
     read_note,
 ]
 _tools_dict = {t.name: t for t in TOOLS}
