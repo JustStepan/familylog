@@ -4,7 +4,7 @@ import frontmatter as fm
 
 from src.logger import logger
 from src.constants import NOISE_TAGS, RUSSIAN_MONTHS
-from .api import obsidian_get
+from .api import obsidian_get, obsidian_create
 from . import general_data
 from src.config import settings
 
@@ -34,13 +34,13 @@ async def update_current_context(
 
     if content is None:
         content = f"# Context {now.strftime('%B %Y')}\n\n{today_header}\n- {entry}\n"
-        await api.obsidian_create(path, content)
+        await obsidian_create(path, content)
     elif today_header in content:
         content = content.rstrip() + f"\n- {entry}\n"
-        await api.obsidian_create(path, content)
+        await obsidian_create(path, content)
     else:
         content = content.rstrip() + f"\n\n{today_header}\n- {entry}\n"
-        await api.obsidian_create(path, content)
+        await obsidian_create(path, content)
 
     logger.info(f"Обновлён context ({path}): {entry[:80]}...")
 
@@ -81,7 +81,7 @@ async def update_tags_glossary(tags: list[str]) -> None:
     else:
         content = content.rstrip() + f"\n\n{auto_section}\n{new_lines}\n"
 
-    await api.obsidian_create(path, content)
+    await obsidian_create(path, content)
     logger.info(f"Новые теги в глоссарии: {new_tags}")
 
 
@@ -112,7 +112,7 @@ async def update_family_memory(new_people: list[str]) -> None:
     else:
         content = content.rstrip() + "\n\n## Друзья и знакомые\n\n" + new_entries + "\n"
 
-    await api.obsidian_create(path, content)
+    await obsidian_create(path, content)
     logger.info(f"Новые люди в FAMILY_MEMORY: {people_to_add}")
 
 
@@ -184,7 +184,7 @@ async def update_diary_authors(path: str, new_author: str) -> None:
         post["authors"] = authors
     # Всегда обновляем timestamp при любом append
     post["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-    await api.obsidian_create(path, fm.dumps(post))
+    await obsidian_create(path, fm.dumps(post))
 
 
 def _normalize_tag(tag: str) -> str:
@@ -336,7 +336,7 @@ async def add_backlinks(related_files: list[str], current_filename: str) -> None
             if current_normalized not in existing_normalized:
                 existing.append(current_link)
                 post["related"] = existing
-                await api.obsidian_create(filepath, fm.dumps(post))
+                await obsidian_create(filepath, fm.dumps(post))
         except Exception:
             continue
 

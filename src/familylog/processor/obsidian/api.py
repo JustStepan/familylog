@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 import httpx
 
@@ -53,11 +54,27 @@ async def obsidian_append(path: str, content: str) -> None:
         await obsidian_create(path, existing + "\n" + content)
 
 
+async def ensure_folder_exists(dest_folder: str) -> bool:
+    async with httpx.AsyncClient(verify=False, timeout=30) as client:
+        r = await client.get(
+            f"{settings.OBSIDIAN_API_URL}/vault/{dest_folder}",
+            headers={
+                "Authorization": f"Bearer {settings.OBSIDIAN_API_KEY}"
+            },
+        )
+        if r.status_code == 404:
+            logger.info(f'Папка {dest_folder} не создана. Создаем.')
+            await obsidian_create(
+                f"{dest_folder}/info.md",
+                f'Папка {dest_folder} была создана {datetime.now()}'
+            )
+
 async def obsidian_upload_image(photo_path: Path, filename: str, dest_folder: str) -> None:
     """Загружает изображение в vault/{dest_folder}/{filename}.
 
     dest_folder — папка назначения, например "attachments/photos/2026/03-мар".
     """
+    await ensure_folder_exists(dest_folder)
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         with open(photo_path, "rb") as f:
             r = await client.put(
@@ -77,6 +94,7 @@ async def obsidian_upload_document(doc_path: Path, filename: str, dest_folder: s
 
     dest_folder — папка назначения, например "attachments/documents/2026/03-мар".
     """
+    await ensure_folder_exists(dest_folder)
     suffix = Path(filename).suffix.lower()
     content_type = MIME_MAP.get(suffix, "application/octet-stream")
 

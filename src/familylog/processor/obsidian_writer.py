@@ -146,7 +146,7 @@ async def _update_related_files(
         logger.warning(f"Ошибка поиска related: {e}")
 
 
-async def  д_upload_session_media(
+async def  _upload_session_media(
     db_session: AsyncSession,
     s: Session,
     photo_dest: str,
