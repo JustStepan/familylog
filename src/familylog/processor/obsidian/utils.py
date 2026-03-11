@@ -12,7 +12,6 @@ def month_folder(dt: datetime) -> str:
 
 def attachment_folder(base_folder: str, dt: datetime) -> str:
     """Возвращает путь к папке аттачментов с year/month.
-
     Примеры:
       attachment_folder("attachments/photos", dt) → "attachments/photos/2026/03-мар"
       attachment_folder("attachments/documents", dt) → "attachments/documents/2026/03-мар"

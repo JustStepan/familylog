@@ -188,14 +188,22 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     agent_config: str
 
-
 def _call_llm(state: AgentState) -> AgentState:
     messages = list(state["messages"])
+    step = len(messages)
+    logger.debug(f"[Agent step {step}] Вызов LLM, сообщений в стейте: {step}")
+    
     system_content = state.get("agent_config", "You are a helpful assistant.")
     messages = [SystemMessage(content=system_content)] + messages
     message = _llm_with_tools.invoke(messages)
+    
+    if hasattr(message, "tool_calls") and message.tool_calls:
+        tools = [t["name"] for t in message.tool_calls]
+        logger.debug(f"[Agent step {step}] LLM решила вызвать тулы: {tools}")
+    else:
+        logger.debug(f"[Agent step {step}] LLM завершила цикл, длина ответа: {len(message.content)}")
+    
     return {"messages": [message]}
-
 
 def _take_action(state: AgentState) -> AgentState:
     tool_calls = state["messages"][-1].tool_calls
@@ -203,15 +211,17 @@ def _take_action(state: AgentState) -> AgentState:
     for t in tool_calls:
         tool_name = t["name"]
         tool_args = t["args"]
-        logger.debug(f"Agent tool: {tool_name}({tool_args})")
+        logger.debug(f"[Tool] {tool_name}({tool_args})")
         if tool_name not in _tools_dict:
             result = f"Tool '{tool_name}' not found."
+            logger.error(f"Инструмент не найден: {tool_name}")
         else:
             result = _tools_dict[tool_name].invoke(tool_args)
+            logger.debug(f"[Tool] {tool_name} → результат {len(str(result))} символов")
         results.append(
             ToolMessage(tool_call_id=t["id"], name=tool_name, content=str(result))
         )
-    logger.info(f"Agent executed {len(results)} tool(s): {[t['name'] for t in tool_calls]}")
+    logger.info(f"Агент применил {len(results)} инструмент(ы):\n{[t['name'] for t in tool_calls]}")
     return {"messages": results}
 
 
@@ -281,5 +291,5 @@ def process_session_with_agent(
     })
 
     final_content = result["messages"][-1].content
-    logger.info(f"Agent finished: intent={intent}, output_len={len(final_content)}")
+    logger.info(f"Агент закончил процесс подготовки результата: intent={intent}, output_len={len(final_content)}")
     return final_content

@@ -56,12 +56,19 @@ def fix_attachment_paths(content: str, year: int, mfolder: str) -> str:
     """Вставляет year/month в пути аттачментов если LLM их не указал.
 
     ![[attachments/photos/photo.jpg]]      → ![[attachments/photos/2026/03-мар/photo.jpg]]
-    ![[attachments/documents/report.pdf]]  → ![[attachments/documents/2026/03-мар/report.pdf]]
-    Пути, уже содержащие /YYYY/ — не изменяются (negative lookahead (?!\\d{4}/).
+    ![[attachments/documents/report.pdf]]  → ![[attachments/documents/2026/03-11/report.pdf]]
     """
-    pattern = r'(!\[\[attachments/(?:photos|documents)/)(?!\d{4}/)([^\]]+\]\])'
-    replacement = rf'\g<1>{year}/{mfolder}/\g<2>'
-    return re.sub(pattern, replacement, content)
+    # Вставляем year/month если вообще отсутствуют
+    pattern1 = r'(!\[\[attachments/(?:photos|documents)/)(?!\d{4}/)([^\]]+\]\])'
+    replacement1 = rf'\g<1>{year}/{mfolder}/\g<2>'
+    content = re.sub(pattern1, replacement1, content)
+
+    # Исправляем неправильный формат месяца: 2026/03-11 → 2026/03-мар
+    pattern2 = rf'(!\[\[attachments/(?:photos|documents)/{year}/)\d{{2}}-\d{{2}}/'
+    replacement2 = rf'\g<1>{mfolder}/'
+    content = re.sub(pattern2, replacement2, content)
+
+    return content
 
 
 # ─── Вспомогательные функции обработки сессии ────────────────────────────────
@@ -108,11 +115,11 @@ def _build_tags(
 
 
 async def _update_related_files(
-    filename: str, tags: list[str], intent: str, llm_related: list[str]
+    filename: str, extra_tags: list[str], llm_related: list[str]
 ) -> None:
     """Ищет, валидирует и проставляет related-ссылки в обоих направлениях."""
     try:
-        tag_related = await write_files.find_related_by_tags(tags, filename, intent)
+        tag_related = await write_files.find_related_by_tags(extra_tags, filename)
         all_related = list(dict.fromkeys(llm_related + tag_related))[:5]
         if all_related:
             all_related = await write_files.validate_related_files(all_related)
@@ -139,7 +146,7 @@ async def _update_related_files(
         logger.warning(f"Ошибка поиска related: {e}")
 
 
-async def _upload_session_media(
+async def  д_upload_session_media(
     db_session: AsyncSession,
     s: Session,
     photo_dest: str,
@@ -197,7 +204,10 @@ async def _process_single_session(
         return False
 
     # Строим теги и нормализуем списки людей
-    people_tags, new_people = _build_tags(out, author_name)
+    # Важное замечание:extra_tags - теги новых лудей и теги из body сообщения
+    # дальше в inject_tags_to_frontmatter мы будем брать теги из yaml
+    # для того чтобы минимизировать ошибки модели (в yaml и body разные теги)
+    extra_tags, new_people = _build_tags(out, author_name)
 
     # Фиксируем позицию frontmatter и убираем JSON-запятые из YAML
     content = write_files.sanitize_frontmatter(
@@ -205,20 +215,19 @@ async def _process_single_session(
     )
 
     # Python гарантирует теги в frontmatter
-    content = write_files.inject_tags_to_frontmatter(content, people_tags)
+    content = write_files.inject_tags_to_frontmatter(content, extra_tags)
 
     # Добавляем created timestamp в frontmatter
+    session_dt = s.opened_at or datetime.now()
     try:
         post = fm.loads(content)
-        created_ts = s.opened_at or datetime.now()
         if "created" not in post.metadata:
-            post["created"] = created_ts.strftime("%Y-%m-%d %H:%M")
+            post["created"] = session_dt.strftime("%Y-%m-%d %H:%M")
         content = fm.dumps(post)
     except Exception as e:
         logger.warning(f"Сессия {s.id}: не удалось добавить created в frontmatter: {e}")
 
-    # ── Вычисляем папки для аттачментов (year/month) ──
-    session_dt = s.opened_at or datetime.now()
+    # ── Вычисляем папки для добавлений файлов (year/month) ──
     photo_dest = utils.attachment_folder("attachments/photos", session_dt)
     doc_dest = utils.attachment_folder("attachments/documents", session_dt)
 
@@ -231,15 +240,20 @@ async def _process_single_session(
         )
     )
     doc_msgs = doc_messages_result.scalars().all()
+    
     doc_filenames = [m.document_filename for m in doc_msgs if m.document_filename]
-
+    
     # Исправляем ссылки на документы и форматы embed
     if doc_filenames:
         content = write_files.fix_document_references(content, doc_filenames, doc_dest)
-    content = fix_obsidian_embeds(content)
-    content = fix_attachment_paths(content, session_dt.year, utils.month_folder(session_dt))
+    content_after_embeds = fix_obsidian_embeds(content)
+    if content_after_embeds != content:
+        print('content_after_embeds != content')
+    content = fix_attachment_paths(content_after_embeds, session_dt.year, utils.month_folder(session_dt))
 
-    # Python генерирует имя файла (session_dt уже содержит fallback на now())
+    if content != content_after_embeds:
+        print('content != content_after_embeds:')
+
     filename = utils.generate_filename(out.title, intent, session_dt)
 
     # Определяем action: create или append
@@ -265,13 +279,10 @@ async def _process_single_session(
                     logger.info("Для intent=calendar был обновлен md файл")
     else:
         clean_content = write_files.strip_frontmatter(content)
-        await api.obsidian_append(filename, clean_content)
-        # Сливаем новые теги в существующий frontmatter
-        if tags:
-            fresh = await api.obsidian_get(filename)
-            if fresh:
-                updated_content = write_files.inject_tags_to_frontmatter(fresh, tags)
-                await api.obsidian_create(filename, updated_content)
+        fresh = await api.obsidian_get(filename)  # GET
+        if fresh:
+            updated = write_files.inject_tags_to_frontmatter(fresh, extra_tags)
+            await api.obsidian_create(filename, updated + "\n" + clean_content)  # PUT
         logger.info(f"Дополнен файл: {filename}")
 
     # Обновляем authors для дневника
@@ -279,14 +290,14 @@ async def _process_single_session(
         await write_files.update_diary_authors(filename, author_name)
 
     # Related: LLM-предложения + совпадение по тегам
-    await _update_related_files(filename, tags, intent, out.related)
+    await _update_related_files(filename, extra_tags, out.related)
 
     # Загружаем медиа в vault
     await _upload_session_media(db_session, s, photo_dest, doc_dest, doc_msgs)
 
     # ── Обновляем системные файлы (память) ──
-    await write_files.update_current_context(out.context_summary, filename=filename, tags=tags)
-    await write_files.update_tags_glossary(tags)
+    await write_files.update_current_context(out.context_summary, filename=filename, tags=extra_tags)
+    await write_files.update_tags_glossary(extra_tags)
     await write_files.update_family_memory(new_people)
 
     s.status = "processed"

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///familylog.db"
     CONTEXT_MEMORY_DAYS: int = 30
     SESSION_TIMEOUT_MINUTES: int = 30
+    RELATED_NOTES_MIN_TAG_OVERLAP: int = 2
     SUMMARY_INTERVAL_DAYS: int = 7
 
     # Telegram
@@ -39,7 +40,7 @@ class Settings(BaseSettings):
     VISION_MODEL_OFFLINE: str = "qwen3.5-2b"
 
     # LLM
-    LLM_MODEL_OFFLINE: str = "openai/gpt-oss-20b" # openai/gpt-oss-20b
+    LLM_MODEL_OFFLINE: str = "qwen3.5-9b" # openai/gpt-oss-20b
 
     # LM Studio endpoints
     LM_STUDIO_URL: str = "http://localhost:1234/v1"

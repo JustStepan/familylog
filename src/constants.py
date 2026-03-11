@@ -14,6 +14,7 @@ MIME_MAP = {
     ".xml": "application/xml",
     ".zip": "application/zip",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".mp4": "application/video",
 }
 
 

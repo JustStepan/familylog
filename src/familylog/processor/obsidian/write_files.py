@@ -4,8 +4,9 @@ import frontmatter as fm
 
 from src.logger import logger
 from src.constants import NOISE_TAGS, RUSSIAN_MONTHS
-from . import api
+from .api import obsidian_get
 from . import general_data
+from src.config import settings
 
 
 async def update_current_context(
@@ -24,10 +25,11 @@ async def update_current_context(
     path = f"_system/context/{now.year}/{month_name}.md"
 
     # Нормализуем теги: убираем лишний # если он уже есть (LLM возвращает "#тег")
-    tags_str = f" ({', '.join('#' + t.lstrip('#') for t in tags)})" if tags else ""
+    unique_tags = list(dict.fromkeys(t.lstrip('#') for t in tags if t))
+    tags_str = f" ( {', '.join('#' + t for t in unique_tags)})" if unique_tags else ""
     entry = f"[{filename}]{tags_str}\n{context_summary}" if filename else context_summary
 
-    content = await api.obsidian_get(path)
+    content = await obsidian_get(path)
     today_header = f"## {now.strftime('%Y-%m-%d')}"
 
     if content is None:
@@ -49,7 +51,7 @@ async def update_tags_glossary(tags: list[str]) -> None:
         return
 
     path = "_system/TAGS_GLOSSARY.md"
-    content = await api.obsidian_get(path)
+    content = await obsidian_get(path)
     if content is None:
         return
 
@@ -89,7 +91,7 @@ async def update_family_memory(new_people: list[str]) -> None:
         return
 
     path = "_system/FAMILY_MEMORY.md"
-    content = await api.obsidian_get(path)
+    content = await obsidian_get(path)
     if content is None:
         return
 
@@ -172,7 +174,7 @@ def sanitize_frontmatter(content: str) -> str:
 
 async def update_diary_authors(path: str, new_author: str) -> None:
     """Обновляет authors и updated в frontmatter дневника."""
-    content = await api.obsidian_get(path)
+    content = await obsidian_get(path)
     if not content:
         return
     post = fm.loads(content)
@@ -193,50 +195,45 @@ def _normalize_tag(tag: str) -> str:
 def generate_person_tag(name: str) -> str:
     """Генерирует тег из имени человека.
 
-    'Василий Иванович Полеостровский' → 'В_И_Полеостровский'
-    'Пётр Иванович' → 'Пётр_Иванович'
-    'Степан' → 'Степан'
+    'Василий Иванович Полеостровский' → '#В_И_Полеостровский'
+    'Пётр Иванович' → '#Пётр_Иванович'
+    'Степан' → '#Степан'
     """
     parts = name.strip().split()
     if len(parts) >= 3:
-        # Имя Отчество Фамилия → И_О_Фамилия
-        return f"{parts[0][0]}_{parts[1][0]}_{parts[2]}"
+        return f"#{parts[0][0]}_{parts[1][0]}_{parts[2]}"
     elif len(parts) == 2:
-        # Имя Фамилия → Имя_Фамилия
-        return f"{parts[0]}_{parts[1]}"
+        return f"#{parts[0]}_{parts[1]}"
     elif parts:
-        return parts[0]
+        return f"#{parts[0]}"
     return ""
 
-
-def inject_tags_to_frontmatter(content: str, peopel_tags: list[str]) -> str:
+def inject_tags_to_frontmatter(content: str, extra_tags: list[str]) -> str:
     """Вставляет теги в frontmatter через python-frontmatter.
     Нормализует теги: убирает # (в YAML frontmatter Obsidian теги без #),
     отбрасывает пустые.
     """
-    if not peopel_tags:
-        logger.warning("Теги не обнаружены для вставки в frontmatter")
+    if not extra_tags:
+        logger.warning("extra_tags пустой — out.tags не содержит тегов от модели")
         return content
     try:
-        post = fm.loads(content)
-        content_existing_t = post.get("tags", []) or []
+        post = fm.loads(content)  # Объект fm - Словарь, с ключами, из yaml.
+        yaml_t = post.get("tags", []) or []
         # Нормализуем: убираем # из обоих списков, фильтруем None/пустые
-        all_tags = [_normalize_tag(t) for t in content_existing_t if t] + \
-                   [_normalize_tag(t) for t in peopel_tags if t]
+        all_tags = [_normalize_tag(t) for t in yaml_t if t] + \
+                   [_normalize_tag(t) for t in extra_tags if t]
         # Дедупликация с сохранением порядка, отбрасываем пустые
         merged = list(dict.fromkeys(t for t in all_tags if t))
         post["tags"] = merged
         return fm.dumps(post)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Ошибка вставки тегов в frontmatter: {e}")
         return content
 
 
-async def find_related_by_tags(
-    tags: list[str], current_filename: str, intent: str
-) -> list[str]:
+async def find_related_by_tags(tags: list[str], current_filename: str) -> list[str]:
     """Ищет заметки с совпадающими тегами через месячные context-файлы.
-
-    Вместо обхода всех файлов vault читает уже готовый индекс контекста
+    Читает уже готовый индекс контекста
     (записи вида: - [filepath] (#тег1, #тег2)\nSummary...).
     Возвращает до 5 наиболее связанных файлов.
     """
@@ -262,11 +259,11 @@ async def find_related_by_tags(
             _normalize_tag(t) for t in tags_str.split(",") if t.strip()
         ) - NOISE_TAGS
         overlap = len(tags_set & file_tags)
-        if overlap > 1:
-            logger.debug(f"Related (context): {filepath} совпадение {overlap}")
+        if overlap >= settings.RELATED_NOTES_MIN_TAG_OVERLAP:
+            logger.debug(f"Связанные заметки: {filepath} совпадение тегов - {overlap}")
             candidates.append((filepath, overlap))
 
-    logger.debug(f"Related итого из контекста: {len(candidates)} кандидатов")
+    logger.debug(f"Итого связанных заметок из контекста: {len(candidates)} кандидатов")
     candidates.sort(key=lambda x: x[1], reverse=True)
     return [c[0] for c in candidates[:5]]
 
@@ -316,7 +313,7 @@ async def validate_related_files(related: list[str]) -> list[str]:
     for filepath in related:
         if not filepath or not filepath.endswith(".md"):
             continue
-        content = await api.obsidian_get(filepath)
+        content = await obsidian_get(filepath)
         if content is not None:
             valid.append(filepath)
     return valid
@@ -328,7 +325,7 @@ async def add_backlinks(related_files: list[str], current_filename: str) -> None
     current_normalized = _from_wikilink(current_link)
 
     for filepath in related_files:
-        file_content = await api.obsidian_get(filepath)
+        file_content = await obsidian_get(filepath)
         if not file_content:
             continue
         try:
@@ -348,7 +345,6 @@ def fix_document_references(
     content: str, doc_filenames: list[str], dest_folder: str = "attachments/documents"
 ) -> str:
     """Исправляет ссылки на документы в контенте — гарантирует точное имя файла.
-
     LLM может исказить имя файла (заменить пробелы на _ и т.д.).
     dest_folder — папка назначения документов, например "attachments/documents/2026/03-мар".
     """
@@ -364,14 +360,16 @@ def fix_document_references(
         # Если LLM использовал искажённое имя — заменяем на правильное
         if mangled != fn and mangled in content:
             content = content.replace(mangled, fn)
+            print('Сработал mangled')
         if no_comma != fn and no_comma in content:
             content = content.replace(no_comma, fn)
+            print('Сработал no_comma')
 
         # Если ссылка на документ вообще отсутствует — добавляем в конец.
         # Используем regex чтобы найти basename независимо от пути (year/month могут быть разными).
         if not re.search(re.escape(fn), content):
             content = content.rstrip() + f"\n\n![[{dest_folder}/{fn}]]\n"
-            logger.info(f"Вручную добавлена ссылка на документ: {fn}")
+            logger.warning(f"Вручную добавлена ссылка на документ: {fn}")
 
     return content
 
