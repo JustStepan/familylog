@@ -138,7 +138,7 @@ def search_related_notes(tags: str) -> str:
             t.strip().lstrip("#") for t in tags_str.split(",") if t.strip()
         ) - NOISE_TAGS
         overlap = len(tags_set & file_tags)
-        if overlap > 1:
+        if overlap >= settings.RELATED_NOTES_MIN_TAG_OVERLAP:
             candidates.append((filepath, overlap))
 
     if not candidates:
@@ -147,7 +147,6 @@ def search_related_notes(tags: str) -> str:
     candidates.sort(key=lambda x: x[1], reverse=True)
     lines = [f"- {path} (совпадений тегов: {count})" for path, count in candidates[:5]]
     return "Related notes:\n" + "\n".join(lines)
-
 
 @tool
 def read_note(path: str) -> str:
@@ -190,6 +189,7 @@ class AgentState(TypedDict):
 
 def _call_llm(state: AgentState) -> AgentState:
     messages = list(state["messages"])
+    logger.info(f'+++++Количество сообщений: {len(list(state["messages"]))}')
     step = len(messages)
     logger.debug(f"[Agent step {step}] Вызов LLM, сообщений в стейте: {step}")
     
