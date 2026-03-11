@@ -49,7 +49,6 @@ async def assemble_sessions(session: AsyncSession) -> int:
 
             msg.status = "assembled"
 
-        # 5. Обновить сессию
         s.assembled_content = "\n".join(parts)
         s.status = "assembled"
         processed_count += 1

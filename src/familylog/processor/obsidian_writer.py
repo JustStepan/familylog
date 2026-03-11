@@ -1,4 +1,5 @@
 import json
+import pprint
 import re
 from pathlib import Path
 from datetime import datetime
@@ -169,26 +170,16 @@ async def _upload_session_media(
             logger.warning(f"Документ не найден: {doc_path}")
 
 
-# ─── Основная логика обработки ────────────────────────────────────────────────
-
 async def _process_single_session(
     s: Session,
-    base_context: dict,
-    intent_cache: dict[str, str],
+    family_memory: str,
     db_session: AsyncSession,
 ) -> bool:
     """Обрабатывает одну assembled-сессию. Возвращает True при успехе."""
     intent = s.intent if s.intent != "unknown" else "note"
 
-    # Загружаем intent-specific правила (с кешем)
-    if intent not in intent_cache:
-        intent_config = await general_data.load_system_file(f"intents/{intent}.md")
-        intent_cache[intent] = "" if "(file not found)" in intent_config else intent_config
-        logger.info(f"Интент={intent} загружен в системный кеш.")
-    context = {**base_context, "intent_config": intent_cache[intent]}
-
     logger.info(f"Записываем сессию {s.id} (intent={intent})...")
-    author_name = utils.resolve_author(s.author_id, context["family_memory"])
+    author_name = utils.resolve_author(s.author_id, family_memory)
 
     # Агент итеративно собирает контекст из vault и генерирует JSON
     llm_output = process_session_with_agent(
@@ -316,13 +307,12 @@ async def process_assembled_sessions(session: AsyncSession) -> int:
         return 0
 
     # Загружаем базовый контекст один раз, intent-specific кешируем
-    base_context = await general_data.load_base_context()
-    intent_cache: dict[str, str] = {}
+    family_memory = await api.obsidian_get("_system/FAMILY_MEMORY.md") or ""
     processed_count = 0
 
     for s in sessions:
         try:
-            if await _process_single_session(s, base_context, intent_cache, session):
+            if await _process_single_session(s, family_memory, session):
                 processed_count += 1
         except Exception as e:
             logger.error(f"Ошибка сессии {s.id}: {e}")

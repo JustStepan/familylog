@@ -13,7 +13,6 @@ MEDIA_DIR = Path("media/documents")
 
 async def process_document_messages(session: AsyncSession) -> int:
     """Скачивает документы из Telegram и формирует text_content из метаданных.
-
     Не извлекает содержимое файлов — только сохраняет и создаёт описание
     на основе имени файла, MIME-типа и caption.
     """

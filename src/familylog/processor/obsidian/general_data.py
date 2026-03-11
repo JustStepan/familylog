@@ -3,17 +3,15 @@ from datetime import datetime, timedelta
 from src.config import settings
 from src.constants import RUSSIAN_MONTHS
 from src.logger import logger
-from . import api
+from .api import obsidian_get
 
 
 async def load_system_file(filename: str) -> str:
     """Загружает системный md файл из _system/ папки vault."""
-    content = await api.obsidian_get(f"_system/{filename}")
+    content = await obsidian_get(f"_system/{filename}")
     return content or f"# {filename}\n(file not found)"
 
-
 # ─── Работа с контекстом ─────────────────────────────────────────────────────
-
 def context_month_path(year: int, month: int) -> str:
     """Путь к месячному файлу контекста: _system/context/2026/03-мар.md"""
     mfolder = f"{month:02d}-{RUSSIAN_MONTHS[month - 1]}"
@@ -86,7 +84,7 @@ async def load_context_for_period(
     parts = []
     for year, month in _iter_months_back(reference_date, settings.CONTEXT_MEMORY_DAYS):
         path = context_month_path(year, month)
-        content = await api.obsidian_get(path)
+        content = await obsidian_get(path)
         if content:
             parts.append(content)
 
@@ -107,7 +105,7 @@ async def load_context_before(before: datetime) -> str:
     cursor = before.replace(day=1) - timedelta(days=1)
     for _ in range(3):
         path = context_month_path(cursor.year, cursor.month)
-        content = await api.obsidian_get(path)
+        content = await obsidian_get(path)
         if content:
             filtered = parse_context_before(content, before)
             if filtered:
@@ -115,20 +113,3 @@ async def load_context_before(before: datetime) -> str:
         cursor = cursor.replace(day=1) - timedelta(days=1)
 
     return "\n\n".join(parts) if parts else ""
-
-
-# ─── Базовый контекст для пайплайна ──────────────────────────────────────────
-
-async def load_base_context() -> dict[str, str]:
-    """Загружает общие системные файлы (без intent-specific)."""
-    agent_config = await load_system_file("AGENT_CONFIG.md")
-    family_memory = await load_system_file("FAMILY_MEMORY.md")
-    tags_glossary = await load_system_file("TAGS_GLOSSARY.md")
-    current_context = await load_context_for_period()
-
-    return {
-        "agent_config": agent_config,
-        "family_memory": family_memory,
-        "tags_glossary": tags_glossary,
-        "current_context": current_context,
-    }
