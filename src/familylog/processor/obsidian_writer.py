@@ -197,7 +197,7 @@ async def _process_single_session(
         return False
 
     # Строим теги и нормализуем списки людей
-    tags, new_people = _build_tags(out, author_name)
+    people_tags, new_people = _build_tags(out, author_name)
 
     # Фиксируем позицию frontmatter и убираем JSON-запятые из YAML
     content = write_files.sanitize_frontmatter(
@@ -205,7 +205,7 @@ async def _process_single_session(
     )
 
     # Python гарантирует теги в frontmatter
-    content = write_files.inject_tags_to_frontmatter(content, tags)
+    content = write_files.inject_tags_to_frontmatter(content, people_tags)
 
     # Добавляем created timestamp в frontmatter
     try:

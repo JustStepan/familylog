@@ -158,10 +158,8 @@ def fix_frontmatter_position(content: str) -> str:
 
 def sanitize_frontmatter(content: str) -> str:
     """Убирает JSON-стиль запятые из YAML frontmatter.
-    LLM иногда генерирует вложенные блоки с запятыми как в JSON:
         date: "2026-03-11",   →   date: "2026-03-11"
         time_start: null,     →   time_start: null
-    В блочном YAML запятые как разделители не нужны и ломают парсер.
     """
     if not content.startswith("---"):
         return content
@@ -211,20 +209,20 @@ def generate_person_tag(name: str) -> str:
     return ""
 
 
-def inject_tags_to_frontmatter(content: str, tags: list[str]) -> str:
-    """Гарантированно вставляет теги в frontmatter через python-frontmatter.
-
+def inject_tags_to_frontmatter(content: str, peopel_tags: list[str]) -> str:
+    """Вставляет теги в frontmatter через python-frontmatter.
     Нормализует теги: убирает # (в YAML frontmatter Obsidian теги без #),
-    дедуплицирует, отбрасывает пустые.
+    отбрасывает пустые.
     """
-    if not tags:
+    if not peopel_tags:
+        logger.warning("Теги не обнаружены для вставки в frontmatter")
         return content
     try:
         post = fm.loads(content)
-        existing = post.get("tags", []) or []
+        content_existing_t = post.get("tags", []) or []
         # Нормализуем: убираем # из обоих списков, фильтруем None/пустые
-        all_tags = [_normalize_tag(t) for t in existing if t] + \
-                   [_normalize_tag(t) for t in tags if t]
+        all_tags = [_normalize_tag(t) for t in content_existing_t if t] + \
+                   [_normalize_tag(t) for t in peopel_tags if t]
         # Дедупликация с сохранением порядка, отбрасываем пустые
         merged = list(dict.fromkeys(t for t in all_tags if t))
         post["tags"] = merged
