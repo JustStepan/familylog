@@ -165,7 +165,6 @@ vault/
     AGENT_CONFIG.md       ← инструкции для LLM-агента
     FAMILY_MEMORY.md      ← информация о членах семьи (заполните вручную)
     TAGS_GLOSSARY.md      ← глоссарий тегов
-    CURRENT_CONTEXT.md    ← последние записи (обновляется автоматически)
     LAST_SUMMARY.md       ← время последней сводки
     intents/
       note.md
