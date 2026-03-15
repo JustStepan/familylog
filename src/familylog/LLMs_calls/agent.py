@@ -134,7 +134,6 @@ TOOLS = [
     get_tags_glossary,
     get_family_memory,
     get_current_context,
-    get_intent_rules,
     read_note,
 ]
 _tools_dict = {t.name: t for t in TOOLS}
@@ -220,10 +219,10 @@ _TOOL_INSTRUCTIONS = """
 
 У тебя есть инструменты для получения контекста из vault. Используй их в таком порядке:
 
-1. `get_intent_rules("{intent}")` — получи правила форматирования для данного интента
-2. `get_tags_glossary` — получи список существующих тегов, выбери подходящие
-3. `get_current_context` — получи последние записи (нужно для поля `related`)
-4. `get_family_memory` — если в тексте упомянуты незнакомые люди
+1. `get_tags_glossary` — получи список существующих тегов, выбери подходящие
+2. `get_current_context` — получи последние записи (нужно для поля `related`)
+3. `get_family_memory` — если в тексте упомянуты незнакомые люди
+4. `read_note` — прочитай конкретную заметку если нужно уточнить содержание
 
 После сбора всего необходимого контекста — сгенерируй финальный JSON ответ.
 Отвечай ТОЛЬКО валидным JSON, без markdown-обёртки и пояснений.
@@ -244,7 +243,8 @@ def process_session_with_agent(
     )
 
     agent_config_raw = _obsidian_get_sync("_system/AGENT_CONFIG.md") or ""
-    system_prompt = agent_config_raw + _TOOL_INSTRUCTIONS.format(intent=intent)
+    intent_rules = _obsidian_get_sync(f"_system/intents/{intent}.md") or ""
+    system_prompt = agent_config_raw + "\n\n" + intent_rules + _TOOL_INSTRUCTIONS
 
     user_message = (
         f"Интент: {intent}\n"

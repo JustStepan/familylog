@@ -54,4 +54,7 @@ KEYBOARD_BUTTONS = [
 
 SUMMARY_MARKER_PATH = "_system/LAST_SUMMARY.md"
 SUMMARY_FOLDERS = ("notes", "diary", "calendar", "tasks")
-NOISE_TAGS = {"дневник", "заметка", "семья", "планы", "мысли", "задания", "календарь"}
+NOISE_TAGS = {
+    "дневник", "заметка", "семья", "планы", "мысли", "задания", "календарь,"
+    "audio", "diary", "работа"
+}

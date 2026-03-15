@@ -367,7 +367,7 @@ def fix_document_references(
 
         # Если ссылка на документ вообще отсутствует — добавляем в конец.
         # Используем regex чтобы найти basename независимо от пути (year/month могут быть разными).
-        if not re.search(re.escape(fn), content):
+        if not re.search(r'!\[\[.*?' + re.escape(fn) + r'.*?\]\]', content):
             content = content.rstrip() + f"\n\n![[{dest_folder}/{fn}]]\n"
             logger.warning(f"Вручную добавлена ссылка на документ: {fn}")
 

@@ -263,6 +263,7 @@ async def _process_single_session(
         logger.info(f"Создан файл: {filename}")
 
         # Google Calendar — только после того как файл уже создан
+        logger.info(f"calendar_event from LLM: {out.calendar_event}")
         if intent == "calendar" and out.calendar_event:
             event_link = create_calendar_event(
                 title=out.title,

@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Инфраструктура
     BOT_TOKEN: str
     DATABASE_URL: str = "sqlite+aiosqlite:///familylog.db"
-    CONTEXT_MEMORY_DAYS: int = 30
+    CONTEXT_MEMORY_DAYS: int = 60
     SESSION_TIMEOUT_MINUTES: int = 30
     RELATED_NOTES_MIN_TAG_OVERLAP: int = 2
     SUMMARY_INTERVAL_DAYS: int = 7
@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     #   "nemo-conformer-tdt" — Parakeet, мультиязычный (quantization="int8")
     #
     # STT_MODEL_PATH должен совпадать с папкой куда скачана модель (download_models.py)
-    STT_MODEL_OFFLINE: str = "gigaam-v3-e2e-rnnt"  # nemo-conformer-tdt
-    STT_MODEL_PATH: str = f"{BASE_DIR}/stt_models/gigaam-v3-e2e-rnnt/"  # stt_models/parakeet-tdt-0.6b-v3-int8/
+    STT_MODEL_OFFLINE: str = "nemo-conformer-tdt"  # nemo-conformer-tdt gigaam-v3-e2e-rnnt
+    STT_MODEL_PATH: str = f"{BASE_DIR}/stt_models/parakeet-tdt-0.6b-v3-int8/"  # stt_models/parakeet-tdt-0.6b-v3-int8/
 
     # Vision
     VISION_MODEL_OFFLINE: str = "qwen3.5-4b-mlx"

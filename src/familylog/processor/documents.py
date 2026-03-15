@@ -54,7 +54,7 @@ async def process_document_messages(session: AsyncSession) -> int:
             logger.info(f"Скачан: {file_path}")
 
         except Exception as e:
-            logger.error(f"Ошибка документа {msg.id}: {e}")
+            
             msg.status = "error_doc"
             await session.commit()
 
